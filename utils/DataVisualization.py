@@ -1,24 +1,27 @@
 
 import numpy as np
+
 def DisplaySlices(data, ColourMax):
     """
     Volume Slices visualization:
-        - Left Atria mask (ColourMax: 1)
-        - MRI slices (ColourMax: 200)
+        - Left Atria mask
+        - MRI slices
 
     :param data: numpy array with the mask or MRI information
-    :param ColourMax: gray range colours
+    :param ColourMax: data.max()
     :return: opens a page with the slices displayed
     """
-    r, c = 320,320
+    r = data.shape[0]
+    c =data.shape[1]
 
     # DISPLAY ALL SLICES:
     import plotly.graph_objects as go
-    nb_frames = 64
+
+    nb_frames = data.shape[-1]
     volume = data
     fig = go.Figure(frames=[go.Frame(data=go.Surface(
-        z=(63 - k) * np.ones((r, c)),
-        surfacecolor=np.flipud(volume[:,:,63 - k]),
+        z=((data.shape[-1]-1) - k) * np.ones((r, c)),
+        surfacecolor=np.flipud(volume[:,:,(data.shape[-1]-1) - k]),
         cmin=0, cmax=ColourMax
         ),
         name=str(k) # you need to name the frame for the animation to behave properly
@@ -27,8 +30,8 @@ def DisplaySlices(data, ColourMax):
 
     # Add data to be displayed before animation starts
     fig.add_trace(go.Surface(
-        z=63 * np.ones((r, c)),
-        surfacecolor=np.flipud(volume[:,:,63]),
+        z=(data.shape[-1]-1) * np.ones((r, c)),
+        surfacecolor=np.flipud(volume[:,:,(data.shape[-1]-1)]),
         colorscale='Gray',
         cmin=0, cmax=ColourMax,
         colorbar=dict(thickness=20, ticklen=4)
@@ -66,7 +69,7 @@ def DisplaySlices(data, ColourMax):
              width=600,
              height=600,
              scene=dict(
-                        zaxis=dict(range=[0, 63], autorange=False),
+                        zaxis=dict(range=[0, (data.shape[-1]-1)], autorange=False),
                         aspectratio=dict(x=1, y=1, z=1),
                         ),
              updatemenus = [
@@ -94,3 +97,5 @@ def DisplaySlices(data, ColourMax):
     )
 
     fig.show()
+
+

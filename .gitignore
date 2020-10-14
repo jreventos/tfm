@@ -1,6 +1,7 @@
-/Data/CARLOGAP_markus/
-/Data/DICOM/
-/Data/Masks/
-/Data/Mesh/
-/Data/MRI/
-/Data/Papers/
+tfm/Data
+tfm/patients_data
+ai_postgraduate_project-master
+Books
+FIS-arritmies
+Papers
+tfm/train.py
