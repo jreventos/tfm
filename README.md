@@ -16,4 +16,5 @@ The  dataset  consist  of  chest  view  MRI  images  from 85 patients in VTK bin
 - Discuss final volume dimensions (crop volumes according to the masks boundaries)
 - Discuss weights initialization 
 - Metrics
-- Train file 
+- Train file
+- Train the architecture and obtain the first results to then think which modifications (Unet layers, preprocessing steps...) could improve the performance
