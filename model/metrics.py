@@ -1,5 +1,5 @@
 # TODO: define metrics
-#From: https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
+# From: https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
 """Common image segmentation losses.
 """
