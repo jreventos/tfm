@@ -7,8 +7,6 @@ from torch import nn as nn
 from torch.autograd import Variable
 from torch.nn import MSELoss, SmoothL1Loss, L1Loss
 
-from pytorch3dunet.embeddings.contrastive_loss import ContrastiveLoss
-from pytorch3dunet.unet3d.utils import expand_as_one_hot
 
 
 def compute_per_channel_dice(input, target, epsilon=1e-6, weight=None):
@@ -395,4 +393,4 @@ def _create_loss(name, loss_config, weight, ignore_index, pos_weight):
                                     apply_below_threshold=loss_config.get('apply_below_threshold', True))
     else:
         raise RuntimeError(f"Unsupported loss function: '{name}'. Supported losses: {SUPPORTED_LOSSES}")
-        
+
