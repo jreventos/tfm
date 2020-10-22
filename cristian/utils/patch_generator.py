@@ -7,14 +7,19 @@ import re
 from torch.utils.data import Dataset
 
 class GeneratePatches(Dataset):
-    def __init__(self, images_path, masks_path, patch_shape, shuffle_images = False):
+    def __init__(self, images_path, masks_path, patch_shape, shuffle_images = False, allow_overlap = True):
         self.images_path = images_path
         self.masks_path = masks_path
         self.patch_shape = patch_shape
         self.shuffle_images = shuffle_images
-        
+        self.allow_overlap = allow_overlap
         self.images_files = self.get_files(self.images_path)
         self.masks_files = self.get_files(self.masks_path)
+        
+        if self.shuffle_images:
+            self.images_files = np.random.permutation(self.images_files)
+            self.masks_files = np.random.permutation(self.masks_files)
+            
         
         assert len(self.images_files) == len(self.masks_files), 'Num.images is different from num. masks'
         
@@ -45,6 +50,7 @@ class GeneratePatches(Dataset):
             shape = self.get_shape_image(file)
             num_patches = self.calculate_num_patches(shape, self.patch_shape)
             list_patient_info.append(patient_info(patient_id, image_path, mask_path, shape, num_patches))
+            
         return list_patient_info
     
     @staticmethod
@@ -64,6 +70,7 @@ class GeneratePatches(Dataset):
             
         patch_id = idx - cumulative_patches
         return (i, patch_id)
+        
     
     def __len__(self):
         total_len = 0
@@ -76,21 +83,31 @@ class GeneratePatches(Dataset):
         this_patient = self.patients_information[image_idx]
         num_patches = this_patient.num_patches
         num_channels, num_rows, num_cols = this_patient.shape
-        total_tensors_row = int(np.ceil(num_cols/this_patient.shape[2]))
-        total_tensors_col = int(np.ceil(num_rows/this_patient.shape[1]))
+        
+        total_tensors_row = int(np.ceil(num_cols/self.patch_shape[2]))
+        total_tensors_col = int(np.ceil(num_rows/self.patch_shape[1]))
         total_tensors_channel = total_tensors_row * total_tensors_col
         
         start_row, start_col = divmod(patch_id%total_tensors_channel, total_tensors_row) 
-
+        
         start_row = min(self.patch_shape[1] * start_row, this_patient.shape[1])
         end_row = min(start_row + self.patch_shape[1], this_patient.shape[1])
+        
+        if(self.allow_overlap and end_row - start_row < self.patch_shape[1] and end_row == this_patient.shape[1]):
+            start_row = end_row - self.patch_shape[1]
 
         start_col = min(self.patch_shape[2]*start_col, this_patient.shape[2])
         end_col = min(start_col + self.patch_shape[2], this_patient.shape[2])
+        
+        if(self.allow_overlap and end_col - start_col < self.patch_shape[2] and end_col == this_patient.shape[2]):
+            start_col = end_col - self.patch_shape[2]
 
         start_channel, _ = divmod(patch_id, total_tensors_channel)
         start_channel = min(start_channel * self.patch_shape[0], this_patient.shape[0]) 
         end_channel = min(start_channel + self.patch_shape[0], this_patient.shape[0])
+        
+        if(self.allow_overlap and end_channel - start_channel < self.patch_shape[0] and end_channel == this_patient.shape[0]):
+            end_channel = start_channel - self.patch_shape[0]
         
         image = VtkReader(this_patient.image_location)
         mask = VtkReader(this_patient.mask_location)
@@ -98,4 +115,5 @@ class GeneratePatches(Dataset):
         image_patch = image[start_channel:end_channel, start_row:end_row, start_col:end_col]
         mask_patch = mask[start_channel:end_channel, start_row:end_row, start_col:end_col]
         
+        print('image_id:', this_patient.patient_id, 'patch_id:', patch_id)
         return (image_patch, mask_patch)
