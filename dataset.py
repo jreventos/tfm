@@ -8,7 +8,9 @@ import numpy as np
 import glob
 import os
 import re
-
+import collections
+import functools
+import random
 
 class PatchesDataset(Dataset):
 
@@ -19,7 +21,7 @@ class PatchesDataset(Dataset):
             image_size=320,
             patch_function=None,
             patch_dim=None,
-            patch_stepsize=None,
+
             mode=None,
             random_sampling=False,
             seed=42):
@@ -108,6 +110,111 @@ class PatchesDataset(Dataset):
         return vol_tensor, mask_tensor
 
 
+class PatchesDataset_2(Dataset):
+
+    def __init__(
+            self,
+            root_dir,
+            transform=None,
+            patch_function=None,
+            patch_dim=None,
+            num_patches = None,
+            mode=None,
+            random_sampling=False,):
+
+        self.root_dir = root_dir
+        self.patch_function = patch_function
+        self.patch_dim = patch_dim
+        self.num_patches = num_patches
+        self.random_sampling = random_sampling
+        self.transform = transform
+        self.patient_ids = None
+        self.volume_dirs = None
+        self.masks_dirs = None
+
+        assert mode in ['train', 'val', 'test']
+
+        # Read images
+        print('Reading {} images'.format(mode))
+
+
+        for i in next(os.walk(self.root_dir))[1]:
+            name = os.path.join(self.root_dir, i)
+            name_set = os.path.join(name, mode)
+            if "masks" in name:
+                self.masks_dirs = [mask_path for mask_path in
+                             sorted(glob.glob(name_set + '/*.vtk'), key=lambda x: float(re.findall("(\d+)", x)[0]))]
+            else:
+                self.volumes_dirs = [vol_path for vol_path in
+                                sorted(glob.glob(name_set + '/*.vtk'), key=lambda x: float(re.findall("(\d+)", x)[0]))]
+
+                self.patient_ids = [vol_dir.split('/')[-1] for vol_dir in self.volumes_dirs]
+
+
+        # Create patch index
+        self.patient_patch_idx = [(patient_idx, patch_idx) for patient_idx in range(len(self.patient_ids)) for
+                                  patch_idx in range(self.num_patches)]
+
+        print('Num patients:', len(self.patient_ids))
+        print('Num patches per patient', self.num_patches)
+
+
+    @staticmethod
+    def calculate_patch_idx(vol_shape,patch_dim):
+        x_corner, y_corner, z_corner = [random.randint(np.ceil(ps/2), vs-(np.ceil(ps/2))) for vs, ps in zip(vol_shape,patch_dim)]
+        d_depth, d_height, d_width = [int(np.ceil(d / 2)) for d in patch_dim]
+        return [(x_corner - d_depth,x_corner + d_depth), (y_corner - d_height,y_corner + d_height),
+                (z_corner - d_width,z_corner + d_width)]
+
+    @staticmethod
+    def calculate_patch(array,patch_idx):
+        x_idx, y_idx, z_idx = patch_idx
+        return array[x_idx[0]:x_idx[1],y_idx[0]:y_idx[1],z_idx[0]:z_idx[1]]
+
+
+    def __len__(self):
+
+        return len(self.patient_patch_idx)  # iteration by slice
+
+    def __getitem__(self, idx):
+        # Read patient index and slice index
+        patient_idx = self.patient_patch_idx[idx][0]
+        if self.random_sampling:
+            patient_idx = np.random.randint(len(self.patient_ids))  # choose a random patient
+
+        # Read arrays
+        volume_array = VtkReader(self.volumes_dirs[patient_idx])[103:223, 110:230, 10:59]
+        print(self.volumes_dirs[patient_idx])
+        mask_array = VtkReader(self.masks_dirs[patient_idx])[103:223, 110:230, 10:59]
+        print(self.masks_dirs[patient_idx])
+
+        # Compute shape
+        vol_shape = volume_array.shape
+
+        # Compute patch index
+        patch_idx = self.calculate_patch_idx(vol_shape,self.patch_dim)
+        print(patch_idx)
+        # Crop patches
+        vol_patch = self.calculate_patch(volume_array, patch_idx)
+        mask_patch = self.calculate_patch(mask_array, patch_idx)
+
+
+        # Add channel dimension in volumes and masks
+        vol_patch = vol_patch[None, :, :, :]
+        mask_patch = mask_patch[None, :, :, :]
+
+        # Apply transforms to patches
+        if self.transform is not None:
+            vol_patch = self.transform(vol_patch.astype(np.float32))
+            mask_patch = self.transform(mask_patch.astype(np.float32))
+
+        # Create volume & mask tensors
+        vol_tensor = torch.from_numpy(vol_patch.astype(np.float32))
+        mask_tensor = torch.from_numpy(mask_patch.astype(np.float32))
+
+        return vol_tensor, mask_tensor
+
+
 
 
 class LeftAtriumSegmentationDataset(Dataset):
@@ -187,6 +294,8 @@ class LeftAtriumSegmentationDataset(Dataset):
         self.transform = transform
 
 
+
+
     def __len__(self):
 
         return len(self.patient_slice_index) # iteration by slice
@@ -229,32 +338,55 @@ class LeftAtriumSegmentationDataset(Dataset):
         return image_tensor, mask_tensor
 
 
+
+
+
+# images_path = "/Users/jreventos/Desktop/TFM/tfm/patients_data/MRI_volumes/val"
+# masks_path = "/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/val"
+#
+# ddd = GeneratePatches(images_path,
+#                       masks_path,
+#                       (16, 16, 6),
+#                       shuffle_images=True,
+#                       allow_overlap=True)
+#
+# for p in ddd.patients_information:
+#     print(p)
+#
+# loader = DataLoader(ddd, batch_size=1, shuffle=False)
+# print('Length DataLoader:', len(loader))
+# for i, data in enumerate(loader):
+#     x, y_true = data
+#     print('Volume shape', i, ':', x.shape)
+#     print('Mask shape', i, ':', y_true.shape)
+
+
 if __name__ == "__main__":
 
+
     root_dir = "/Users/jreventos/Desktop/TFM/tfm/patients_data"
-    # val_dataset = PatchesDataset(root_dir, transform=None, image_size=320,
-    #                              patch_function=volume_patches,
-    #                              patch_dim=[128, 128, 60],
-    #                              patch_stepsize=64,
-    #                              mode='val',
-    #                              random_sampling=True,
-    #                              seed=42)
-    #
-    # loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    # print('Length DataLoader:', len(loader))
-    # for i, data in enumerate(loader):
-    #     x, y_true = data
-    #     print('Volume shape', i, ':', x.shape)
-    #     print('Mask shape', i, ':', y_true.shape)
+    val_dataset = PatchesDataset_2(root_dir, transform=None,
+                                 patch_function=volume_patches,
+                                 patch_dim=[28, 28, 16],
+                                 num_patches=2,
+                                 mode='train',
+                                 random_sampling=False)
 
-
-    val_dataset = LeftAtriumSegmentationDataset(root_dir, transform=None, image_size=320, mode='val',
-                                                random_sampling=False, seed=42, dimension="3D")
-
-    print(val_dataset)
     loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    print(len(loader))
+    print('Length DataLoader:', len(loader))
     for i, data in enumerate(loader):
         x, y_true = data
-        print(i, x.shape)
-        print(i, y_true.shape)
+        print('Volume shape', i, ':', x.shape)
+        print('Mask shape', i, ':', y_true.shape)
+
+
+    # val_dataset = LeftAtriumSegmentationDataset(root_dir, transform=None, image_size=320, mode='val',
+    #                                             random_sampling=False, seed=42, dimension="3D")
+    #
+    # print(val_dataset)
+    # loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    # print(len(loader))
+    # for i, data in enumerate(loader):
+    #     x, y_true = data
+    #     print(i, x.shape)
+    #     print(i, y_true.shape)

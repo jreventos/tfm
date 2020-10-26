@@ -7,8 +7,7 @@ from torch import nn as nn
 from torch.autograd import Variable
 from torch.nn import MSELoss, SmoothL1Loss, L1Loss
 
-from pytorch3dunet.embeddings.contrastive_loss import ContrastiveLoss
-from pytorch3dunet.unet3d.utils import expand_as_one_hot
+
 
 
 def compute_per_channel_dice(input, target, epsilon=1e-6, weight=None):
@@ -138,7 +137,7 @@ class GeneralizedDiceLoss(_AbstractDiceLoss):
         super().__init__(weight=None, sigmoid_normalization=sigmoid_normalization)
         self.epsilon = epsilon
 
-    def dice(self, input, target, weight):
+    def dice(self, input, target, weight=None):
         assert input.size() == target.size(), "'input' and 'target' must have the same shape"
 
         input = flatten(input)
