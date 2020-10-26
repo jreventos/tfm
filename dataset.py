@@ -11,6 +11,7 @@ import re
 import collections
 import functools
 import random
+import matplotlib.pyplot as plt
 
 class PatchesDataset(Dataset):
 
@@ -155,8 +156,8 @@ class PatchesDataset_2(Dataset):
         self.patient_patch_idx = [(patient_idx, patch_idx) for patient_idx in range(len(self.patient_ids)) for
                                   patch_idx in range(self.num_patches)]
 
-        print('Num patients:', len(self.patient_ids))
-        print('Num patches per patient', self.num_patches)
+        #print('Num patients:', len(self.patient_ids))
+        #print('Num patches per patient', self.num_patches)
 
 
     @staticmethod
@@ -184,16 +185,16 @@ class PatchesDataset_2(Dataset):
 
         # Read arrays
         volume_array = VtkReader(self.volumes_dirs[patient_idx])[103:223, 110:230, 10:59]
-        print(self.volumes_dirs[patient_idx])
+        #print(self.volumes_dirs[patient_idx])
         mask_array = VtkReader(self.masks_dirs[patient_idx])[103:223, 110:230, 10:59]
-        print(self.masks_dirs[patient_idx])
+        #print(self.masks_dirs[patient_idx])
 
         # Compute shape
         vol_shape = volume_array.shape
 
         # Compute patch index
         patch_idx = self.calculate_patch_idx(vol_shape,self.patch_dim)
-        print(patch_idx)
+        #print(patch_idx)
         # Crop patches
         vol_patch = self.calculate_patch(volume_array, patch_idx)
         mask_patch = self.calculate_patch(mask_array, patch_idx)
@@ -367,15 +368,24 @@ if __name__ == "__main__":
     root_dir = "/Users/jreventos/Desktop/TFM/tfm/patients_data"
     val_dataset = PatchesDataset_2(root_dir, transform=None,
                                  patch_function=volume_patches,
-                                 patch_dim=[28, 28, 16],
+                                 patch_dim=[36, 36, 36],
                                  num_patches=2,
-                                 mode='train',
+                                 mode='val',
                                  random_sampling=False)
 
     loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     print('Length DataLoader:', len(loader))
     for i, data in enumerate(loader):
         x, y_true = data
+        plt.figure("check", (18, 6))
+        plt.subplot(1, 2, 1)
+        plt.title(f"Image {i}")
+        plt.imshow(x[0, 0, :, :, 15], cmap="gray")
+        plt.subplot(1, 2, 2)
+        plt.title(f"label {i}")
+        plt.imshow(y_true[0, 0, :, :, 15])
+        plt.show()
+
         print('Volume shape', i, ':', x.shape)
         print('Mask shape', i, ':', y_true.shape)
 

@@ -11,6 +11,7 @@ from tfm.model import  metrics
 from tfm.model.Unet import *
 from tfm.dataset import*
 from tfm.utils.patches import *
+import matplotlib.pyplot as plt
 
 
 # Parser
@@ -42,7 +43,7 @@ parser.add_argument("--lr", type=int, default= 0.0001, help="learning rate")
 # Training parameters
 parser.add_argument("--epoch", type=int, default=1, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
-parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
+parser.add_argument("--batch", type=int, default=2, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=1, help="Verbose, when we want to do a print")
 
 parser.add_argument("--early_stopping", type=int, default=5, help="Number of epochs without improvement to stop")
@@ -100,7 +101,7 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
         # Get loss
         loss = criterion.dice(out, y)
-        print(loss.item)
+
 
         # Backpropagate error
         loss.backward()
@@ -114,7 +115,22 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
         # Log
         if (batch_idx + 1) % opt.verbose == 0 and mode_train:
-            print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss} ')
+            print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} ')
+
+        if mode_train == False:
+
+            # plot the slice [:, :, 80]
+            plt.figure("check", (18, 6))
+            plt.subplot(1, 3, 1)
+            plt.title(f"image {batch_idx}")
+            plt.imshow(data[0, 0, :, :, 15], cmap="gray")
+            plt.subplot(1, 3, 2)
+            plt.title(f"label {batch_idx}")
+            plt.imshow(y[0, 0, :, :, 15])
+            plt.subplot(1, 3, 3)
+            plt.title(f"output {batch_idx}")
+            plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, 15])
+            plt.show()
 
     return batch_loss.avg
 
@@ -132,7 +148,7 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer):
     best_val_loss = None
     counter = 0
     for epoch in range(opt.epoch):
-
+        print("----------")
         print(f'Epoch: {epoch + 1}')
 
         # Train
@@ -182,7 +198,7 @@ def main():
                                  mode='train',
                                  random_sampling=False)
 
-    data_loader_train = DataLoader(data_train, batch_size=opt.batch)
+    data_loader_train = DataLoader(data_train, batch_size=opt.batch,num_workers=4)
 
     # Validation data
     data_val =  PatchesDataset_2(opt.path, transform=None,
@@ -193,7 +209,7 @@ def main():
                                  random_sampling=False)
 
 
-    data_loader_val = DataLoader(data_val, batch_size=opt.batch)
+    data_loader_val = DataLoader(data_val, batch_size=1,num_workers=4)
 
     # Loss function
     loss = metrics.GeneralizedDiceLoss()
@@ -220,3 +236,6 @@ if __name__ == '__main__':
     main()
     end = time.time()
     print('Total training time:', end - start)
+
+    # Show example results
+
