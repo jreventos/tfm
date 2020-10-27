@@ -13,7 +13,7 @@ from tfm.dataset import*
 from tfm.utils.patches import *
 import matplotlib.pyplot as plt
 
-
+from monai.losses import DiceLoss, GeneralizedDiceLoss
 # Parser
 parser = argparse.ArgumentParser()
 # Set seed
@@ -41,9 +41,9 @@ parser.add_argument("--lr", type=int, default= 0.0001, help="learning rate")
 #parser.add_argument("--fine_tuning_prop", type=str, default='complete', help='Proportion of the net unfreezed')
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=1, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=50, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
-parser.add_argument("--batch", type=int, default=2, help="Number of examples in batch")
+parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=1, help="Verbose, when we want to do a print")
 
 parser.add_argument("--early_stopping", type=int, default=5, help="Number of epochs without improvement to stop")
@@ -100,8 +100,7 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         out = model(data)
 
         # Get loss
-        loss = criterion.dice(out, y)
-
+        loss = criterion(out, y)
 
         # Backpropagate error
         loss.backward()
@@ -149,7 +148,7 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer):
     counter = 0
     for epoch in range(opt.epoch):
         print("----------")
-        print(f'Epoch: {epoch + 1}')
+        print(f'Epoch: {epoch +1}/{opt.epoch}')
 
         # Train
         loss_train = train_epoch(data_loader_train, model, criterion, optimizer, mode_train=True)
@@ -191,29 +190,29 @@ def main():
         net.load_state_dict(torch.load(opt.load_path))
 
     # Train data
-    data_train = PatchesDataset_2(opt.path, transform=None,
-                                 patch_function=volume_patches,
+    data_train = PatchesDataset_2(opt.path,
+                                 transform=None,
                                  patch_dim=opt.patch_dim,
                                  num_patches = 2,
                                  mode='train',
-                                 random_sampling=False)
+                                 random_sampling=True)
 
     data_loader_train = DataLoader(data_train, batch_size=opt.batch,num_workers=4)
 
     # Validation data
-    data_val =  PatchesDataset_2(opt.path, transform=None,
-                                 patch_function=volume_patches,
+    data_val =  PatchesDataset_2(opt.path,
+                                 transform=None,
                                  patch_dim=opt.patch_dim,
                                  num_patches=2,
                                  mode='val',
-                                 random_sampling=False)
+                                 random_sampling=True)
 
 
-    data_loader_val = DataLoader(data_val, batch_size=1,num_workers=4)
+    data_loader_val = DataLoader(data_val, batch_size=1)
 
     # Loss function
-    loss = metrics.GeneralizedDiceLoss()
-    criterion = loss
+    #loss = metrics.GeneralizedDiceLoss()
+    criterion = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
 
     # Optimizer
     optimizer = optim.Adam(net.parameters(), lr=opt.lr)
