@@ -4,6 +4,7 @@ import numpy as np
 import functools
 import collections
 import re
+import torch
 from torch.utils.data import Dataset
 
 class GeneratePatches(Dataset):
@@ -113,9 +114,11 @@ class GeneratePatches(Dataset):
         mask = VtkReader(this_patient.mask_location)
         
         image_patch = image[start_channel:end_channel, start_row:end_row, start_col:end_col]
+        image_patch = np.expand_dims(image_patch, axis=0)
         image_patch = torch.from_numpy(image_patch.astype(np.float32))
         
         mask_patch = mask[start_channel:end_channel, start_row:end_row, start_col:end_col]
+        mask_patch = np.expand_dims(mask_patch, axis=0)
         mask_patch = torch.from_numpy(mask_patch.astype(np.float32))
         print('image_id:', this_patient.patient_id, 'patch_id:', patch_id)
         return (image_patch, mask_patch)
