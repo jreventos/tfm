@@ -16,6 +16,7 @@ def conv_stage(in_chan, out_chan):
         conv_block(out_chan, out_chan),
     )
 
+
 class UNet(nn.Module):
     """
     This is a 3D segmentation framework of UNet for medical volume by pytorch
@@ -39,7 +40,8 @@ class UNet(nn.Module):
         self.dec3 = conv_stage(128, 32)
         self.dec2 = conv_stage(64, 16)
         self.dec1 = conv_stage(32, 16)
-        self.conv_out = nn.Conv3d(16, 1, 1)
+        self.conv_out = nn.Conv3d(16, out_channels=2, kernel_size=1)
+        self.final_activation = nn.Softmax(dim=1)
 
     def forward(self, x):
 
@@ -56,7 +58,8 @@ class UNet(nn.Module):
         dec2 = self.dec2(torch.cat((enc2, F.interpolate(dec3, enc2.size()[2:], mode='trilinear')), 1))
         dec1 = self.dec1(torch.cat((enc1, F.interpolate(dec2, enc1.size()[2:], mode='trilinear')), 1))
         out = self.conv_out(dec1)
-        out = torch.sigmoid(out)
+        #out = torch.sigmoid(out)
+        out = self.final_activation(out)
         return out
 
     def init_params(self):
@@ -72,8 +75,13 @@ if __name__ == '__main__':
     import torch
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = UNet()
-    data = torch.Tensor(1, 1, 320, 320, 60)
+    data = torch.Tensor(1, 1, 32, 32, 32)
     start_time = time.time()
 
     out = net(data)
-    print("out size: {}".format(out.size()))
+    print(out)
+    print(out.shape)
+    # print(out)
+    # _, y_pred = out.max(dim=1)
+    # print(y_pred.shape)
+    # print("out size: {}".format(out.size()))

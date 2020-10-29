@@ -12,6 +12,7 @@ import collections
 import functools
 import random
 import matplotlib.pyplot as plt
+from tfm.utils import DataVisualization
 
 class PatchesDataset(Dataset):
 
@@ -19,13 +20,11 @@ class PatchesDataset(Dataset):
             self,
             root_dir,
             transform=None,
-            image_size=320,
             patch_function=None,
             patch_dim=None,
-
+            patch_stepsize = None,
             mode=None,
-            random_sampling=False,
-            seed=42):
+            random_sampling=False):
 
         self.root_dir = root_dir
         self.patch_function = patch_function
@@ -111,20 +110,20 @@ class PatchesDataset(Dataset):
         return vol_tensor, mask_tensor
 
 
+
+
 class PatchesDataset_2(Dataset):
 
     def __init__(
             self,
             root_dir,
             transform=None,
-            patch_function=None,
             patch_dim=None,
             num_patches = None,
             mode=None,
             random_sampling=False,):
 
         self.root_dir = root_dir
-        self.patch_function = patch_function
         self.patch_dim = patch_dim
         self.num_patches = num_patches
         self.random_sampling = random_sampling
@@ -143,11 +142,11 @@ class PatchesDataset_2(Dataset):
             name = os.path.join(self.root_dir, i)
             name_set = os.path.join(name, mode)
             if "masks" in name:
-                self.masks_dirs = [mask_path for mask_path in
-                             sorted(glob.glob(name_set + '/*.vtk'), key=lambda x: float(re.findall("(\d+)", x)[0]))]
+                self.masks_dirs = [mask_path for mask_path in glob.glob(name_set + '/*.vtk')]
+                self.masks_dirs.sort(key=lambda f: int(re.sub('\D', '', f)))
             else:
-                self.volumes_dirs = [vol_path for vol_path in
-                                sorted(glob.glob(name_set + '/*.vtk'), key=lambda x: float(re.findall("(\d+)", x)[0]))]
+                self.volumes_dirs = [vol_path for vol_path in glob.glob(name_set + '/*.vtk')]
+                self.volumes_dirs.sort(key=lambda f: int(re.sub('\D', '', f)))
 
                 self.patient_ids = [vol_dir.split('/')[-1] for vol_dir in self.volumes_dirs]
 
@@ -156,10 +155,9 @@ class PatchesDataset_2(Dataset):
         self.patient_patch_idx = [(patient_idx, patch_idx) for patient_idx in range(len(self.patient_ids)) for
                                   patch_idx in range(self.num_patches)]
 
-        #print('Num patients:', len(self.patient_ids))
-        #print('Num patches per patient', self.num_patches)
 
-
+        #print('Vol:',self.volumes_dirs)
+        #print('Masks:',self.masks_dirs)
     @staticmethod
     def calculate_patch_idx(vol_shape,patch_dim):
         x_corner, y_corner, z_corner = [random.randint(np.ceil(ps/2), vs-(np.ceil(ps/2))) for vs, ps in zip(vol_shape,patch_dim)]
@@ -181,13 +179,17 @@ class PatchesDataset_2(Dataset):
         # Read patient index and slice index
         patient_idx = self.patient_patch_idx[idx][0]
         if self.random_sampling:
-            patient_idx = np.random.randint(len(self.patient_ids))  # choose a random patient
+            idx_rand = np.random.randint(len(self.patient_ids))  # choose a random patient
+            patient_idx = self.patient_patch_idx[idx_rand][0]
+
 
         # Read arrays
         volume_array = VtkReader(self.volumes_dirs[patient_idx])[103:223, 110:230, 10:59]
         #print(self.volumes_dirs[patient_idx])
+        #DisplaySlices(volume_array, int(volume_array.max()))
         mask_array = VtkReader(self.masks_dirs[patient_idx])[103:223, 110:230, 10:59]
         #print(self.masks_dirs[patient_idx])
+        #DisplaySlices(mask_array, int(mask_array.max()))
 
         # Compute shape
         vol_shape = volume_array.shape
@@ -202,6 +204,7 @@ class PatchesDataset_2(Dataset):
 
         # Add channel dimension in volumes and masks
         vol_patch = vol_patch[None, :, :, :]
+
         mask_patch = mask_patch[None, :, :, :]
 
         # Apply transforms to patches
@@ -365,26 +368,41 @@ class LeftAtriumSegmentationDataset(Dataset):
 if __name__ == "__main__":
 
 
-    root_dir = "/Users/jreventos/Desktop/TFM/tfm/patients_data"
-    val_dataset = PatchesDataset_2(root_dir, transform=None,
-                                 patch_function=volume_patches,
-                                 patch_dim=[36, 36, 36],
-                                 num_patches=2,
+    root_dir = "/Users/jreventos/Desktop/TFM/tfm/patients_data2"
+    val_dataset = PatchesDataset_2(root_dir,
+                                 transform=None,
+                                 patch_dim=[60, 60, 36],
+                                 num_patches=1,
                                  mode='val',
                                  random_sampling=False)
 
+    # val_dataset = PatchesDataset(root_dir,
+    #                              transform=None,
+    #                              patch_dim= [36, 36, 36],
+    #                              patch_stepsize= 64,
+    #                              patch_function=volume_patches,
+    #                              mode='val',
+    #                              random_sampling=False)
+
+
     loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    print('Length DataLoader:', len(loader))
+
+
     for i, data in enumerate(loader):
         x, y_true = data
+        print(x.shape)
+        print(y_true.shape)
         plt.figure("check", (18, 6))
         plt.subplot(1, 2, 1)
         plt.title(f"Image {i}")
-        plt.imshow(x[0, 0, :, :, 15], cmap="gray")
+        plt.imshow(x[0, 0, :, :, 16], cmap="gray")
         plt.subplot(1, 2, 2)
         plt.title(f"label {i}")
-        plt.imshow(y_true[0, 0, :, :, 15])
+        plt.imshow(y_true[0, 0, :, :, 16])
         plt.show()
+
+        DisplaySlices(x[0, 0, :, :, :], int(x.max()))
+        DisplaySlices(y_true[0,0,:,:,:], int(1))
 
         print('Volume shape', i, ':', x.shape)
         print('Mask shape', i, ':', y_true.shape)

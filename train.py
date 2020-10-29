@@ -20,10 +20,10 @@ parser = argparse.ArgumentParser()
 #parser.add_argument("--seed", type=int, default=42, help="Seed")
 
 # Data loader parameters
-parser.add_argument("--path", type=str, default='/Users/jreventos/Desktop/TFM/tfm/patients_data', help="Path to the training and val data")
+parser.add_argument("--path", type=str, default='/Users/jreventos/Desktop/TFM/tfm/patients_data2', help="Path to the training and val data")
 parser.add_argument("--mean", type=list, default=21.201036, help="Mean of the data set MRI volumes")
 parser.add_argument("--std", type=list, default= 40.294086, help="Standard deviation of the data set MRI volumes")
-parser.add_argument("--patch_dim", type=list, default=[32,32,32], help="Patches dimensions")
+parser.add_argument("--patch_dim", type=list, default=[60,60,32], help="Patches dimensions")
 parser.add_argument("--stepsize", type=int, default=64, help="patches overlap stepsize")
 
 
@@ -41,7 +41,7 @@ parser.add_argument("--lr", type=int, default= 0.0001, help="learning rate")
 #parser.add_argument("--fine_tuning_prop", type=str, default='complete', help='Proportion of the net unfreezed')
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=50, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=18, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=1, help="Verbose, when we want to do a print")
@@ -98,6 +98,8 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         # Get prediction
 
         out = model(data)
+        #print(out)
+        #print(out.shape)
 
         # Get loss
         loss = criterion(out, y)
