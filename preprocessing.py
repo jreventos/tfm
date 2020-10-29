@@ -37,6 +37,23 @@ def standarize(vol,outliers = None):
 #stand_array = standarize(array,outliers=True)
 #DisplaySlices(stand_array, int(stand_array.max()))
 
+def custom_normalize(array,mean,sd):
+    """
+    Volume normalization by means of mean and sd
+    :param array: numpy ndarray [H,W,slices]
+    :param mean: overall mean
+    :param sd: overall standard deviation
+    :return: normalized array in each channel
+    """
+    return (array - mean) / sd
+
+
+
+# array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data/MRI_volumes/train/MRI_2.vtk")
+# norm_array = custom_normalize(array,mean =21.201036 , sd=40.294086)
+# DisplaySlices(array, int(array.max()))
+# DisplaySlices(norm_array, int(norm_array.max()))
+
 def normalize(vol):
     " Funcion that takes the volume and normalizes its values between [0,1]"
 
@@ -161,8 +178,115 @@ def overall_mask_boundaries(masks_dir):
     return [min(all_x_idx), max(all_x_idx)], [min(all_y_idx), max(all_y_idx)], [min(all_z_idx), max(all_z_idx)]
 
 
-# x,y,z = overall_mask_boundaries("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks")
+#x,y,z = overall_mask_boundaries("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks")
 #mask_array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_44.vtk")
+from typing import Callable, List, Optional, Sequence, Tuple, Union
+
+def map_binary_to_indices(
+    label: np.ndarray,
+    image: Optional[np.ndarray] = None,
+    image_threshold: float = 0.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute the foreground and background of input label data, return the indices after fattening.
+    For example:
+    ``label = np.array([[[0, 1, 1], [1, 0, 1], [1, 1, 0]]])``
+    ``foreground indices = np.array([1, 2, 3, 5, 6, 7])`` and ``background indices = np.array([0, 4, 8])``
+    Args:
+        label: use the label data to get the foreground/background information.
+        image: if image is not None, use ``label = 0 & image > image_threshold``
+            to define background. so the output items will not map to all the voxels in the label.
+        image_threshold: if enabled `image`, use ``image > image_threshold`` to
+            determine the valid image content area and select background only in this area.
+    """
+    # Prepare fg/bg indices
+    if label.shape[0] > 1:
+        label = label[1:]  # for One-Hot format data, remove the background channel
+    label_flat = np.any(label, axis=0).ravel()  # in case label has multiple dimensions
+    fg_indices = np.nonzero(label_flat)[0]
+    if image is not None:
+        img_flat = np.any(image > image_threshold, axis=0).ravel()
+        bg_indices = np.nonzero(np.logical_and(img_flat, ~label_flat))[0]
+    else:
+        bg_indices = np.nonzero(~label_flat)[0]
+    return fg_indices, bg_indices
+
+
+
+def generate_pos_neg_label_crop_centers(
+    spatial_size: Union[Sequence[int], int],
+    num_samples: int,
+    pos_ratio: float,
+    label_spatial_shape: Sequence[int],
+    fg_indices: np.ndarray,
+    bg_indices: np.ndarray,
+    rand_state: np.random.RandomState = np.random,
+) -> List[List[np.ndarray]]:
+    """
+    Generate valid sample locations based on the label with option for specifying foreground ratio
+    Valid: samples sitting entirely within image, expected input shape: [C, H, W, D] or [C, H, W]
+    Args:
+        spatial_size: spatial size of the ROIs to be sampled.
+        num_samples: total sample centers to be generated.
+        pos_ratio: ratio of total locations generated that have center being foreground.
+        label_spatial_shape: spatial shape of the original label data to unravel selected centers.
+        fg_indices: pre-computed foreground indices in 1 dimension.
+        bg_indices: pre-computed background indices in 1 dimension.
+        rand_state: numpy randomState object to align with other modules.
+    Raises:
+        ValueError: When the proposed roi is larger than the image.
+        ValueError: When the foreground and background indices lengths are 0.
+    """
+
+    if not (np.subtract(label_spatial_shape, spatial_size) >= 0).all():
+        raise ValueError("The proposed roi is larger than the image.")
+
+    # Select subregion to assure valid roi
+    valid_start = np.floor_divide(spatial_size, 2)
+    # add 1 for random
+    valid_end = np.subtract(label_spatial_shape + np.array(1), spatial_size / np.array(2)).astype(np.uint16)
+    # int generation to have full range on upper side, but subtract unfloored size/2 to prevent rounded range
+    # from being too high
+    for i in range(len(valid_start)):  # need this because np.random.randint does not work with same start and end
+        if valid_start[i] == valid_end[i]:
+            valid_end[i] += 1
+
+    def _correct_centers(
+        center_ori: List[np.ndarray], valid_start: np.ndarray, valid_end: np.ndarray
+    ) -> List[np.ndarray]:
+        for i, c in enumerate(center_ori):
+            center_i = c
+            if c < valid_start[i]:
+                center_i = valid_start[i]
+            if c >= valid_end[i]:
+                center_i = valid_end[i] - 1
+            center_ori[i] = center_i
+        return center_ori
+
+    centers = []
+
+    if not len(fg_indices) or not len(bg_indices):
+        if not len(fg_indices) and not len(bg_indices):
+            raise ValueError("No sampling location available.")
+        warnings.warn(
+            f"N foreground {len(fg_indices)}, N  background {len(bg_indices)},"
+            "unable to generate class balanced samples."
+        )
+        pos_ratio = 0 if not len(fg_indices) else 1
+
+    for _ in range(num_samples):
+        indices_to_use = fg_indices if rand_state.rand() < pos_ratio else bg_indices
+        random_int = rand_state.randint(len(indices_to_use))
+        center = np.unravel_index(indices_to_use[random_int], label_spatial_shape)
+        # shift center to range of valid centers
+        center_ori = list(center)
+        centers.append(_correct_centers(center_ori, valid_start, valid_end))
+
+    return centers
+
+
+
+
 #DisplaySlices(mask_array[105:221,121:209,13:56], int(mask_array.max()))
 
 def resize_volume(vol_array,x_idx = (0,221),y_idx = (131,209),z_idx=(0,56),error_percentage= 0.1):
@@ -206,7 +330,8 @@ def compute_mean_std(path):
 
 #path = '/Users/jreventos/Desktop/TFM/tfm/patients_data/MRI_volumes'
 #compute_mean_std(path)
-#vol_array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data/MRI_volumes/val/MRI_19.vtk")
+
+vol_array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_65.vtk")
 
 def volume_array_histogram(array):
     """Display a histogram of the values that contains the array.
@@ -216,7 +341,8 @@ def volume_array_histogram(array):
     plt.hist(array.flatten(),histtype='step')
     plt.show()
 
-#volume_array_histogram(vol_array)
+#volume_array_histogram(vol_array[105:221,131:209,13:56])
+#DisplaySlices(vol_array[105:221,131:209,13:56], int(vol_array[105:221,131:209,13:56].max()))
 
 
 

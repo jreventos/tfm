@@ -1,7 +1,7 @@
 
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
-
+from torchvision import transforms
 from torch import optim
 import torch
 import argparse
@@ -13,6 +13,9 @@ from tfm.dataset import*
 from tfm.utils.patches import *
 import matplotlib.pyplot as plt
 
+from tfm.preprocessing import custom_normalize
+
+
 from monai.losses import DiceLoss, GeneralizedDiceLoss
 # Parser
 parser = argparse.ArgumentParser()
@@ -22,7 +25,7 @@ parser = argparse.ArgumentParser()
 # Data loader parameters
 parser.add_argument("--path", type=str, default='/Users/jreventos/Desktop/TFM/tfm/patients_data2', help="Path to the training and val data")
 parser.add_argument("--mean", type=list, default=21.201036, help="Mean of the data set MRI volumes")
-parser.add_argument("--std", type=list, default= 40.294086, help="Standard deviation of the data set MRI volumes")
+parser.add_argument("--sd", type=list, default= 40.294086, help="Standard deviation of the data set MRI volumes")
 parser.add_argument("--patch_dim", type=list, default=[60,60,32], help="Patches dimensions")
 parser.add_argument("--stepsize", type=int, default=64, help="patches overlap stepsize")
 
@@ -41,7 +44,7 @@ parser.add_argument("--lr", type=int, default= 0.0001, help="learning rate")
 #parser.add_argument("--fine_tuning_prop", type=str, default='complete', help='Proportion of the net unfreezed')
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=18, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=1, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=1, help="Verbose, when we want to do a print")
@@ -120,14 +123,14 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
         if mode_train == False:
 
-            # plot the slice [:, :, 80]
+            # plot the slice [:, :, 30]
             plt.figure("check", (18, 6))
             plt.subplot(1, 3, 1)
             plt.title(f"image {batch_idx}")
-            plt.imshow(data[0, 0, :, :, 15], cmap="gray")
+            plt.imshow(data[0, 0, :, :, 31], cmap="gray")
             plt.subplot(1, 3, 2)
             plt.title(f"label {batch_idx}")
-            plt.imshow(y[0, 0, :, :, 15])
+            plt.imshow(y[0, 0, :, :, 31])
             plt.subplot(1, 3, 3)
             plt.title(f"output {batch_idx}")
             plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, 15])
@@ -191,9 +194,13 @@ def main():
     if opt.is_load:
         net.load_state_dict(torch.load(opt.load_path))
 
+    # Transform:
+    transform  = transforms.Compose(
+        [transforms.Lambda(lambda x: custom_normalize(x,opt.mean,opt.sd))])
+
     # Train data
     data_train = PatchesDataset_2(opt.path,
-                                 transform=None,
+                                 transform=transform,
                                  patch_dim=opt.patch_dim,
                                  num_patches = 2,
                                  mode='train',
@@ -205,12 +212,12 @@ def main():
     data_val =  PatchesDataset_2(opt.path,
                                  transform=None,
                                  patch_dim=opt.patch_dim,
-                                 num_patches=2,
+                                 num_patches=1,
                                  mode='val',
                                  random_sampling=True)
 
 
-    data_loader_val = DataLoader(data_val, batch_size=1)
+    data_loader_val = DataLoader(data_val, batch_size=1, num_workers=4)
 
     # Loss function
     #loss = metrics.GeneralizedDiceLoss()

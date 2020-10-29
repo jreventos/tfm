@@ -32,16 +32,17 @@ class PatchesDataset(Dataset):
         self.patch_stepsize = patch_stepsize
         self.random_sampling = random_sampling
         self.transform = transform
+        self.mode = mode
 
-        assert mode in ['train', 'val', 'test']
+        assert self.mode in ['train', 'val', 'test']
 
         # Read images
-        print('Reading {} images'.format(mode))
+        print('Reading {} images'.format(self.mode))
         patient_ids = None
 
         for i in next(os.walk(self.root_dir))[1]:
             name = os.path.join(self.root_dir, i)
-            name_set = os.path.join(name, mode)
+            name_set = os.path.join(name, self.mode)
             if "masks" in name:
                 mask_dirs = [mask_path for mask_path in
                              sorted(glob.glob(name_set + '/*.vtk'), key=lambda x: float(re.findall("(\d+)", x)[0]))]
@@ -131,16 +132,17 @@ class PatchesDataset_2(Dataset):
         self.patient_ids = None
         self.volume_dirs = None
         self.masks_dirs = None
+        self.mode = mode
 
-        assert mode in ['train', 'val', 'test']
+        assert self.mode in ['train', 'val', 'test']
 
         # Read images
-        print('Reading {} images'.format(mode))
+        print('Reading {} images'.format(self.mode))
 
 
         for i in next(os.walk(self.root_dir))[1]:
             name = os.path.join(self.root_dir, i)
-            name_set = os.path.join(name, mode)
+            name_set = os.path.join(name, self.mode)
             if "masks" in name:
                 self.masks_dirs = [mask_path for mask_path in glob.glob(name_set + '/*.vtk')]
                 self.masks_dirs.sort(key=lambda f: int(re.sub('\D', '', f)))
@@ -191,6 +193,7 @@ class PatchesDataset_2(Dataset):
         #print(self.masks_dirs[patient_idx])
         #DisplaySlices(mask_array, int(mask_array.max()))
 
+
         # Compute shape
         vol_shape = volume_array.shape
 
@@ -201,16 +204,19 @@ class PatchesDataset_2(Dataset):
         vol_patch = self.calculate_patch(volume_array, patch_idx)
         mask_patch = self.calculate_patch(mask_array, patch_idx)
 
-
-        # Add channel dimension in volumes and masks
-        vol_patch = vol_patch[None, :, :, :]
-
-        mask_patch = mask_patch[None, :, :, :]
-
         # Apply transforms to patches
         if self.transform is not None:
             vol_patch = self.transform(vol_patch.astype(np.float32))
-            mask_patch = self.transform(mask_patch.astype(np.float32))
+            #mask_patch = self.transform(mask_patch.astype(np.float32))
+
+        # If validation mode no patch is extracted
+        if self.mode == 'val':
+            vol_patch = volume_array
+            mask_patch = mask_array
+
+        # Add channel dimension in volumes and masks
+        vol_patch = vol_patch[None, :, :, :]
+        mask_patch = mask_patch[None, :, :, :]
 
         # Create volume & mask tensors
         vol_tensor = torch.from_numpy(vol_patch.astype(np.float32))

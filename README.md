@@ -12,9 +12,6 @@ The  dataset  consist  of  chest  view  MRI  images  from 85 patients in VTK bin
 
 
 # TODO: 
-- Patches implementation into the dataloader (study which is the best approach to proceed: one patch per patient, X random patches per patient...)
-- Discuss final volume dimensions (crop volumes according to the masks boundaries)
 - Discuss weights initialization 
 - Metrics
-- Train file
 - Train the architecture and obtain the first results to then think which modifications (Unet layers, preprocessing steps...) could improve the performance
