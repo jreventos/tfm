@@ -120,5 +120,4 @@ class GeneratePatches(Dataset):
         mask_patch = mask[start_channel:end_channel, start_row:end_row, start_col:end_col]
         mask_patch = np.expand_dims(mask_patch, axis=0)
         mask_patch = torch.from_numpy(mask_patch.astype(np.float32))
-        print('image_id:', this_patient.patient_id, 'patch_id:', patch_id)
         return (image_patch, mask_patch)
