@@ -1,0 +1,10 @@
+To do:
+    - Crate dice loss
+    - Create traning loop
+    - Improve patch generator:
+        - Relationship between background and heart
+        - Stop reading all images
+
+To take into account:
+    - Normalize input (interval (0,1))
+    - cond·d expect (C, D, H, W) and we are providing (C, H, W, D)
