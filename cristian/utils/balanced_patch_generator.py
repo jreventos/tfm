@@ -63,7 +63,7 @@ class BalancedPatchGenerator(Dataset):
         return tuple(idxs_list)
 
     @staticmethod
-    def get_indexes(self, tensor, value, patch_size, num_attempts=3):
+    def get_indexes(self, tensor, value, patch_size, num_attempts=30, max_patch_coverage_allowed=0.9):
         i = 0
         best_patch_coverage = 0
         best_idxs = None
@@ -71,7 +71,7 @@ class BalancedPatchGenerator(Dataset):
             idxs = self.get_candidate_indexes(tensor, value, patch_size)
             patch_candidate = tensor[idxs]
             patch_coverage = np.sum(patch_candidate == value)/np.prod(patch_candidate.shape)
-            if patch_coverage > best_patch_coverage:
+            if patch_coverage > best_patch_coverage and patch_coverage<max_patch_coverage_allowed:
                 best_patch_coverage = patch_coverage
                 best_idxs = idxs
             i+=1
@@ -107,6 +107,7 @@ class BalancedPatchGenerator(Dataset):
         mask_patch = np.expand_dims(mask_patch, axis=0)
         mask_patch = torch.from_numpy(mask_patch.astype(np.float32))
         if self.is_test:
+            print('Patient choosen is {}'.format(patient_id))
             return value, im_patch, mask_patch 
         else:
             return im_patch, mask_patch 
