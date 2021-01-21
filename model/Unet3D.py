@@ -1,4 +1,4 @@
-from tfm.model.layers_factory import Encoder, Decoder
+from model.layers_factory import Encoder, Decoder
 import torch
 from torch import nn as nn
 from torch.nn import functional as F
@@ -37,8 +37,8 @@ class Abstract3DUNet(nn.Module):
 
     """
 
-    def __init__(self, in_channels, out_channels, final_sigmoid, f_maps=64, layer_order='gcr',
-                 num_groups=8, num_levels=4, is_segmentation=True, testing=False,
+    def __init__(self, in_channels, out_channels, final_sigmoid, f_maps=16, layer_order='gcr',
+                 num_groups=4, num_levels=2, is_segmentation=True, testing=False,
                  conv_kernel_size=3, pool_kernel_size=2, conv_padding=1, **kwargs):
 
         super(Abstract3DUNet, self).__init__()
@@ -115,6 +115,7 @@ class Abstract3DUNet(nn.Module):
         # encoder part
         encoders_features = []
         for encoder in self.encoders:
+
             x = encoder(x)
             # reverse the encoder outputs to be aligned with the decoder
             encoders_features.insert(0, x)
@@ -146,8 +147,8 @@ class UNet3D(Abstract3DUNet):
         <https://arxiv.org/pdf/1606.06650.pdf>`.
     """
 
-    def __init__(self, in_channels, out_channels, final_sigmoid=False, f_maps=64, layer_order='gcr',
-                 num_groups=8, num_levels=4, is_segmentation=True, conv_padding=1, **kwargs):
+    def __init__(self, in_channels, out_channels, final_sigmoid=False, f_maps=32, layer_order='gcr',
+                 num_groups=4, num_levels=3, is_segmentation=True, conv_padding=1, **kwargs):
         super(UNet3D, self).__init__(in_channels=in_channels, out_channels=out_channels, final_sigmoid=final_sigmoid,
                                      f_maps=f_maps, layer_order=layer_order,
                                      num_groups=num_groups, num_levels=num_levels, is_segmentation=is_segmentation,
@@ -158,6 +159,9 @@ if __name__ == '__main__':
     import torch
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = UNet3D(in_channels=1,out_channels=2)
+    print('Parameters:',sum(p.data.nelement() for p in net.parameters()))
+    print(net)
+    #net.to(device)
     data = torch.Tensor(1, 1, 32, 32, 32)
     start_time = time.time()
 

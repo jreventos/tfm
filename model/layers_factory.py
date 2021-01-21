@@ -180,7 +180,7 @@ class Encoder(nn.Module):
 
     def __init__(self, in_channels, out_channels, conv_kernel_size=3, apply_pooling=True,
                  pool_kernel_size=2, pool_type='max', conv_layer_order='gcr',
-                 num_groups=8, padding=1):
+                 num_groups=2, padding=1):
         super(Encoder, self).__init__()
         assert pool_type in ['max', 'avg']
 

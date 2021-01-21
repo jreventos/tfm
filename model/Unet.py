@@ -62,12 +62,6 @@ class UNet(nn.Module):
         out = self.final_activation(out)
         return out
 
-    def init_params(self):
-        """Xavier initialization: initializing weights from a uniform distribution in [-1,1] and then scaling by 1/√n."""
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d, nn.Linear):
-                torch.nn.init.xavier_uniform_(m.weight.data, init.calculate_gain('leaky_relu'))
-                m.bias.data.zero_()
 
 
 if __name__ == '__main__':
@@ -75,12 +69,17 @@ if __name__ == '__main__':
     import torch
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = UNet()
+    print('Parameters:',sum(p.data.nelement() for p in net.parameters()))
+    print(net)
+    net.to(device)
     data = torch.Tensor(1, 1, 32, 32, 32)
     start_time = time.time()
 
-    out = net(data)
+    out = net(data.to(device))
     print(out)
     print(out.shape)
+    count = 0
+
     # print(out)
     # _, y_pred = out.max(dim=1)
     # print(y_pred.shape)
