@@ -6,8 +6,10 @@ from model.Unet3D import *
 from model.Unet import UNet
 from dataset import*
 from utils.patches import *
-import matplotlib.pyplot as plt
+
 from preprocessing import custom_normalize
+
+import mlflow.pytorch
 
 
 from monai.losses import DiceLoss, GeneralizedDiceLoss
@@ -23,13 +25,14 @@ parser.add_argument("--path", type=str, default='patients_data',
 parser.add_argument("--mean", type=list, default=21.201036, help="Mean of the data set MRI volumes")
 parser.add_argument("--sd", type=list, default=40.294086, help="Standard deviation of the data set MRI volumes")
 parser.add_argument("--patch_dim", type=list, default=[32, 32, 32], help="Patches dimensions")
-parser.add_argument("--stepsize", type=int, default=64, help="patches overlap stepsize")
+#parser.add_argument("--stepsize", type=int, default=64, help="patches overlap stepsize")
+parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
 
 # Model parameters
 parser.add_argument("--is_load", type=bool, default=False, help="weights initialization")
 parser.add_argument("--load_path", type=str, default='', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
-parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
+
 
 # In case of transfer models
 # parser.add_argument("--feature_extract", type=bool, default=False, help="If true do features extraction, otherwise finetuning")
@@ -37,10 +40,10 @@ parser.add_argument("--positive_probability", type=int, default=0.7, help="% of 
 # parser.add_argument("--fine_tuning_prop", type=str, default='complete', help='Proportion of the net unfreezed')
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=10, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=900, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
-parser.add_argument("--verbose", type=int, default=1, help="Verbose, when we want to do a print")
+parser.add_argument("--verbose", type=int, default=10, help="Verbose, when we want to do a print")
 
 parser.add_argument('--early_true', type=bool, default=False, help='If we want early stopping')
 parser.add_argument("--early_stopping", type=int, default=10, help="Number of epochs without improvement to stop")
@@ -48,7 +51,7 @@ parser.add_argument("--save_models", type=bool, default=True, help='If true mode
 opt = parser.parse_args()
 
 # Define model name
-model_name = '_'.join(['UnetSimple','epoch', str(opt.epoch), 'batch', str(opt.batch),'patchdim',str(opt.patch_dim)])
+model_name = '_'.join(['Unet3D','epoch', str(opt.epoch), 'batch', str(opt.batch),'patchdim',str(opt.patch_dim)])
 
 
 class average_metrics(object):
@@ -85,8 +88,9 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         model.eval()
 
     for batch_idx, (data, y) in enumerate(data_loader):
-        data.to(device)
-        y.to(device)
+        data = data.to(device)
+        data = data.type(torch.cuda.FloatTensor)
+        y = y.to(device)
 
         # Reset gradients
         if mode_train:
@@ -162,11 +166,13 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
         loss_train = train_epoch(data_loader_train, model, criterion, optimizer, mode_train=True)
         print(f'Training - Loss: {loss_train} ')
         write(writer_train, epoch, loss_train)
+        mlflow.log_metric("Average_train_loss", loss_train, step=epoch)
 
         # Validation
         loss_val = train_epoch(data_loader_val, model, criterion, mode_train=False)
         print(f'Validation - Loss: {loss_val}\n')
         write(writer_val, epoch, loss_val)
+        mlflow.log_metric("Average_val_loss", loss_val, step=epoch)
 
         # Early stopping
         if early_true:
@@ -180,7 +186,6 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
         # Save Unet
         if opt.save_models and (epoch + 1) % opt.verbose == 0:
             torch.save(model, 'models_checkpoints/{}/checkpoint_{}.pth'.format(model_name,epoch+1))
-            print('New best Unet: epoch {}'.format(epoch+1))
 
     # Close writer
     writer_train.close()
@@ -189,61 +194,72 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
 def tmp_function(x):
     custom_normalize(x,opt.mean,opt.sd)
 def main():
-    # Load Unet
-    net = UNet()
-    #net = UNet3D(in_channels=1, out_channels=2)
-    net.to(device)
-
-    # load the init weight
-    if opt.is_load:
-        net.load_state_dict(torch.load(opt.load_path))
-
-    # Transform:
-    #transform = transforms.Compose( [transforms.Lambda(lambda x: custom_normalize(x, opt.mean, opt.sd))])
-    #transform = transforms.Compose([transforms.Lambda(tmp_function)])
-
-    #Train data
-    # data_train = PatchesDataset_2(opt.path,
-    #                                 transform=transform,
-    #                                 patch_dim=opt.patch_dim,
-    #                                 num_patches = 1,
-    #                                 mode='train',
-    #                                 random_sampling=False)
+    mlflow.set_experiment("LA_segmentation_complete")
+    with mlflow.start_run():
+        mlflow.log_param("Path", opt.load_path)
+        mlflow.log_param("Num_epochs", opt.epoch)
+        mlflow.log_param("Batch", opt.batch)
+        mlflow.log_param("Patch_dim", opt.patch_dim)
+        mlflow.log_param("Positive_probability", opt.positive_probability)
+        mlflow.log_param("device", device)
+        # Load Unet
+        #net = UNet()
+        net = UNet3D(in_channels=1, out_channels=2)
+        net.to(device)
+        mlflow.pytorch.save_model(net,'Unet')
 
 
 
-    data_train = BalancedPatchGenerator(opt.path,
-                                        opt.patch_dim,
-                                        positive_prob=opt.positive_probability,
-                                        shuffle_images=False,
-                                        mode='train',
-                                        is_test=False,
-                                        transform=None)
+        # load the init weight
+        if opt.is_load:
+            net.load_state_dict(torch.load(opt.load_path))
 
-    data_loader_train = DataLoader(data_train, batch_size=opt.batch, shuffle=True,num_workers=4)
+        # Transform:
+        #transform = transforms.Compose( [transforms.Lambda(lambda x: custom_normalize(x, opt.mean, opt.sd))])
+        #transform = transforms.Compose([transforms.Lambda(tmp_function)])
 
-    # Validation data
-    #data_val =  PatchesDataset_2(opt.path,transform=None,patch_dim=opt.patch_dim,num_patches=1,mode='val',random_sampling=False)
-    #(120, 120, 49)
-    data_val = BalancedPatchGenerator(opt.path,
-                                      (120, 120, 49),
-                                      positive_prob=opt.positive_probability,
-                                      shuffle_images=False,
-                                      mode='val',
-                                      is_test=False,
-                                      transform=None)
+        #Train data
+        # data_train = PatchesDataset_2(opt.path,
+        #                                 transform=transform,
+        #                                 patch_dim=opt.patch_dim,
+        #                                 num_patches = 1,
+        #                                 mode='train',
+        #                                 random_sampling=False)
 
-    data_loader_val = DataLoader(data_val, batch_size=opt.batch, num_workers=4)
 
-    # # Loss function
-    # loss = metrics.GeneralizedDiceLoss()
-    criterion = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
 
-    # Optimizer
-    optimizer = torch.optim.Adam(net.parameters(), 1e-4)
+        data_train = BalancedPatchGenerator(opt.path,
+                                            opt.patch_dim,
+                                            positive_prob=opt.positive_probability,
+                                            shuffle_images=False,
+                                            mode='train',
+                                            is_test=False,
+                                            transform=None)
 
-    # # Train
-    train(data_loader_train, data_loader_val, net, criterion, optimizer, opt.early_true)
+        data_loader_train = DataLoader(data_train, batch_size=opt.batch, shuffle=True,num_workers=4)
+
+        # Validation data
+        #data_val =  PatchesDataset_2(opt.path,transform=None,patch_dim=opt.patch_dim,num_patches=1,mode='val',random_sampling=False)
+        #(120, 120, 49)
+        data_val = BalancedPatchGenerator(opt.path,
+                                          (120, 120, 49),
+                                          positive_prob=opt.positive_probability,
+                                          shuffle_images=False,
+                                          mode='val',
+                                          is_test=False,
+                                          transform=None)
+
+        data_loader_val = DataLoader(data_val, batch_size=opt.batch, num_workers=4)
+
+        # # Loss function
+        # loss = metrics.GeneralizedDiceLoss()
+        criterion = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
+
+        # Optimizer
+        optimizer = torch.optim.Adam(net.parameters(), 1e-4)
+
+        # # Train
+        train(data_loader_train, data_loader_val, net, criterion, optimizer, opt.early_true)
 
 
 def create_dir():
