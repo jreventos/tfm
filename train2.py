@@ -29,8 +29,8 @@ parser.add_argument("--patch_dim", type=list, default=[32, 32, 32], help="Patche
 parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
 
 # Model parameters
-parser.add_argument("--is_load", type=bool, default=False, help="weights initialization")
-parser.add_argument("--load_path", type=str, default='', help="path to the weights net initialization")
+parser.add_argument("--is_load", type=bool, default=True, help="weights initialization")
+parser.add_argument("--load_path", type=str, default='models_checkpoints/Unet3D_epoch_900_batch_1_patchdim_[32, 32, 32]/checkpoint_900.pth', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 
 
@@ -123,27 +123,56 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         if (batch_idx + 1) % opt.verbose == 0 and mode_train:
             print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} ')
 
-        # if mode_train == False:
-        #     print(batch_idx)
-        #     print(out.shape)
-        #
-        #     print(type(data))
-        #     print(type(y))
-        #
-        #     # plot the slice [:, :, 30]
-        #     plt.figure("check", (18, 6))
-        #     plt.subplot(1, 3, 1)
-        #     plt.title(f"image {batch_idx}")
-        #     plt.imshow(data[0, 0, :, :, 25], cmap="gray")
-        #     plt.subplot(1, 3, 2)
-        #     plt.title(f"label {batch_idx}")
-        #     plt.imshow(y.detach().cpu()[0, 0, :, :, 25])
-        #     plt.subplot(1, 3, 3)
-        #     plt.title(f"output {batch_idx}")
-        #     plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, 25])
-        #     plt.show()
-
     return batch_loss.avg
+
+def inference(data_loader, model, criterion):
+    total_batch = len(data_loader)
+    batch_loss = average_metrics()
+
+    model.eval()
+
+    for batch_idx, (data, y) in enumerate(data_loader):
+        data = data.to(device)
+        data = data.type(torch.cuda.FloatTensor)
+        y = y.to(device)
+
+        # Get prediction
+        out = model(data.to(device))
+
+        # print(out)
+        print(out.shape)
+
+        # Get loss
+        loss = criterion(out.to(device), y.to(device))
+
+
+        # Backpropagate error
+        loss.backward()
+
+        # Update loss
+
+        batch_loss.update(loss.item())
+
+        print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} ')
+
+
+
+        # plot the slice [:, :, 25]
+        plt.figure("check", (18, 6))
+        plt.subplot(1, 3, 1)
+        plt.title(f"image {batch_idx}")
+        plt.imshow(data.detach().cpu()[0, 0, :, :, 25], cmap="gray")
+        plt.subplot(1, 3, 2)
+        plt.title(f"label {batch_idx}")
+        plt.imshow(y.detach().cpu()[0, 0, :, :, 25])
+        plt.subplot(1, 3, 3)
+        plt.title(f"output {batch_idx}")
+        plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, 25])
+        plt.show()
+
+        #DisplaySlices(data.detach().cpu()[0, 0, :, :, :], int(data.detach().cpu().max()))
+        #DisplaySlices(torch.argmax(out, dim=1).detach().cpu()[0,:,:,:], int(1))
+
 
 
 def write(writer, epoch, loss):
@@ -189,7 +218,7 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
 
     # Close writer
     writer_train.close()
-    # writer_val.close()
+    writer_val.close()
 
 def tmp_function(x):
     custom_normalize(x,opt.mean,opt.sd)
@@ -202,30 +231,26 @@ def main():
         mlflow.log_param("Patch_dim", opt.patch_dim)
         mlflow.log_param("Positive_probability", opt.positive_probability)
         mlflow.log_param("device", device)
-        # Load Unet
-        #net = UNet()
-        net = UNet3D(in_channels=1, out_channels=2)
-        net.to(device)
-        mlflow.pytorch.save_model(net,'Unet')
+
+        start = time.time()
 
 
-
-        # load the init weight
+        # Load the model
         if opt.is_load:
-            net.load_state_dict(torch.load(opt.load_path))
+            # if inference
+            #net.load_state_dict(torch.load(opt.load_path))
+            net = torch.load(opt.load_path)
+        else:
+            # if training
+            # net = UNet()
+            net = UNet3D(in_channels=1, out_channels=2)
+            net.to(device)
+            mlflow.pytorch.save_model(net, 'Unet')
+
 
         # Transform:
         #transform = transforms.Compose( [transforms.Lambda(lambda x: custom_normalize(x, opt.mean, opt.sd))])
         #transform = transforms.Compose([transforms.Lambda(tmp_function)])
-
-        #Train data
-        # data_train = PatchesDataset_2(opt.path,
-        #                                 transform=transform,
-        #                                 patch_dim=opt.patch_dim,
-        #                                 num_patches = 1,
-        #                                 mode='train',
-        #                                 random_sampling=False)
-
 
 
         data_train = BalancedPatchGenerator(opt.path,
@@ -239,8 +264,6 @@ def main():
         data_loader_train = DataLoader(data_train, batch_size=opt.batch, shuffle=True,num_workers=4)
 
         # Validation data
-        #data_val =  PatchesDataset_2(opt.path,transform=None,patch_dim=opt.patch_dim,num_patches=1,mode='val',random_sampling=False)
-        #(120, 120, 49)
         data_val = BalancedPatchGenerator(opt.path,
                                           (120, 120, 49),
                                           positive_prob=opt.positive_probability,
@@ -259,7 +282,15 @@ def main():
         optimizer = torch.optim.Adam(net.parameters(), 1e-4)
 
         # # Train
-        train(data_loader_train, data_loader_val, net, criterion, optimizer, opt.early_true)
+        if opt.is_load:
+            inference(data_loader_val, net, criterion)
+            end = time.time()
+            print('Total inference time:', end - start)
+        else:
+            train(data_loader_train, data_loader_val, net, criterion, optimizer, opt.early_true)
+            end = time.time()
+            print('Total training time:', end - start)
+
 
 
 def create_dir():
@@ -273,8 +304,5 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(torch.cuda.get_device_name())
     print(torch.cuda.is_available())
-    start = time.time()
     create_dir()
     main()
-    end = time.time()
-    print('Total training time:', end - start)
