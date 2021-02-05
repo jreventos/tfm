@@ -31,7 +31,7 @@ parser.add_argument("--transforms", type=bool, default=True, help="transforms")
 
 # Model parameters
 parser.add_argument("--is_load", type=bool, default=True, help="weights initialization")
-parser.add_argument("--load_path", type=str, default='models_checkpoints/Unet3D_epoch_1000_batch_1_patchdim_[32, 32, 32]_posprob_0.6_normalize_True_lr_0.0001_optim_Adam/checkpoint_860.pth', help="path to the weights net initialization")
+parser.add_argument("--load_path", type=str, default='models_checkpoints/Unet3D_epoch_1000_batch_1_patchdim_[32, 32, 32]_posprob_0.3_normalize_True_lr_0.0001_optim_Adam/checkpoint_1000.pth', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 
 
@@ -169,15 +169,15 @@ def inference(data_loader, model, criterion):
         print(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:].shape)
         out_array = torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]
 
-        output_file = f'out_vtk_'+str(batch_idx)+'.vtk'
-        vtk_out = convert2(out_array,output_file)
-        print(type(vtk_out))
+        #output_file = f'out_vtk_'+str(batch_idx)+'.vtk'
+        #vtk_out = convert2(out_array,output_file)
+        #print(type(vtk_out))
 
 
-        # import pyvista as pv
-        # data = pv.wrap(narray)
+       #import pyvista as pv
+        #data = pv.wrap(out_array)
         # print(type(data))
-        # data.plot(volume=True)
+       # data.plot(volume=True)
 
         #vtk_out = numpy_to_vtk(torch.argmax(out, dim=1).detach().cpu()[0,:,:,:])
         #DisplaySlices(data.detach().cpu()[0, 0, :, :, :], int(data.detach().cpu().max()))
