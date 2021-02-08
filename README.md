@@ -11,7 +11,3 @@ Images were collected for the study performed in the [Delayed  GadoliniumEnhance
 The  dataset  consist  of  chest  view  MRI  images  from 85 patients in VTK binary or ascii image format. The full dataset cannot be shared here for legal reasons. 
 
 
-# TODO: 
-- Discuss weights initialization 
-- Metrics
-- Train the architecture and obtain the first results to then think which modifications (Unet layers, preprocessing steps...) could improve the performance
