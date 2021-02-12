@@ -13,6 +13,9 @@ import mlflow.pytorch
 from vtk.util.numpy_support import *
 
 from monai.losses import DiceLoss, GeneralizedDiceLoss
+from monai.metrics import compute_meandice, compute_confusion_matrix_metric, get_confusion_matrix
+from monai.inferers import sliding_window_inference
+from monai.transforms import AsDiscrete
 import optuna
 
 # Parser
@@ -25,19 +28,19 @@ parser.add_argument("--path", type=str, default='patients_data',
                     help="Path to the training and val data")
 parser.add_argument("--mean", type=list, default=21.201036, help="Mean of the data set MRI_volumes volumes")
 parser.add_argument("--sd", type=list, default=40.294086, help="Standard deviation of the data set MRI_volumes volumes")
-parser.add_argument("--patch_dim", type=list, default=[32, 32, 32], help="Patches dimensions")
+parser.add_argument("--patch_dim", type=list, default=[60, 60, 32], help="Patches dimensions")
 parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
 parser.add_argument("--transforms", type=bool, default=True, help="transforms")
 
 # Model parameters
 parser.add_argument("--is_load", type=bool, default=True, help="weights initialization")
-parser.add_argument("--load_path", type=str, default='models_checkpoints/Unet3D_epoch_1000_batch_1_patchdim_[32, 32, 32]_posprob_0.3_normalize_True_lr_0.0001_optim_Adam/checkpoint_1000.pth', help="path to the weights net initialization")
+parser.add_argument("--load_path", type=str, default='models_checkpoints/Unet3D_epoch_300_batch_1_patchdim_[60, 60, 32]_posprob_0.7_normalize_True_lr_0.0001_optim_Adam_GN_8/checkpoint_300.pth', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 
 
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=1000, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=300, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=20, help="Verbose, when we want to do a print")
@@ -77,6 +80,8 @@ class average_metrics(object):
 def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
     total_batch = len(data_loader)
     batch_loss = average_metrics()
+    hausdorff = average_metrics()
+    dice = average_metrics()
 
     if mode_train:
         model.train()
@@ -103,6 +108,10 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         # Get loss
         loss = criterion(out.to(device), y.to(device))
 
+        # Evaluation
+        hausdorff.update(out.to(device),y.to(device))
+        dice.update(out.to(device), y.to(device))
+
 
         # Backpropagate error
         loss.backward()
@@ -110,6 +119,7 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         # Update loss
 
         batch_loss.update(loss.item())
+
 
         # Optimize
         if mode_train:
@@ -124,6 +134,10 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 def inference(data_loader, model, criterion):
     total_batch = len(data_loader)
     batch_loss = average_metrics()
+    dice, sensitivity, specificity, precision, f1_score, accuracy = average_metrics(), average_metrics(),average_metrics(),average_metrics(),average_metrics(),average_metrics()
+    post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=2)
+    post_label = AsDiscrete(to_onehot=True, n_classes=2)
+
 
     model.eval()
 
@@ -135,38 +149,49 @@ def inference(data_loader, model, criterion):
         # Get prediction
         out = model(data.to(device))
 
-        # print(out)
-        print(out.shape)
-
         # Get loss
         loss = criterion(out.to(device), y.to(device))
-
 
         # Backpropagate error
         loss.backward()
 
         # Update loss
-
         batch_loss.update(loss.item())
 
-        print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} ')
+        # Evaluation
+        outputs = post_pred(out.to(device))
+        labels = post_label(y.to(device))
+
+        dice.update(compute_meandice(y_pred=outputs,  y=labels, include_background=False,).item())
+
+        conf_matrix = get_confusion_matrix(y_pred=outputs,  y=labels, include_background=False,)
+        sensitivity.update(compute_confusion_matrix_metric('sensitivity',conf_matrix).item())
+        specificity.update(compute_confusion_matrix_metric('specificity', conf_matrix).item())
+        precision.update(compute_confusion_matrix_metric('precision', conf_matrix).item())
+        f1_score.update(compute_confusion_matrix_metric('f1 score', conf_matrix).item())
+        accuracy.update(compute_confusion_matrix_metric('accuracy', conf_matrix).item())
 
 
+        print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val}  -Dice: {dice.val} ')
 
-        # plot the slice [:, :, 25]
+        print(out.shape[4])
+
+        # plot slice
+        slice = out.shape[4]//2
+
         plt.figure("check", (18, 6))
         plt.subplot(1, 3, 1)
         plt.title(f"image {batch_idx}")
-        plt.imshow(data.detach().cpu()[0, 0, :, :, 25], cmap="gray")
+        plt.imshow(data.detach().cpu()[0, 0, :, :, slice], cmap="gray")
         plt.subplot(1, 3, 2)
         plt.title(f"label {batch_idx}")
-        plt.imshow(y.detach().cpu()[0, 0, :, :, 25])
+        plt.imshow(y.detach().cpu()[0, 0, :, :, slice])
         plt.subplot(1, 3, 3)
         plt.title(f"output {batch_idx}")
-        plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, 25])
+        plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, slice])
         plt.show()
-        print(type(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]))
-        print(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:].shape)
+        #print(type(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]))
+        #print(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:].shape)
         out_array = torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]
 
         #output_file = f'out_vtk_'+str(batch_idx)+'.vtk'
@@ -183,7 +208,7 @@ def inference(data_loader, model, criterion):
         #DisplaySlices(data.detach().cpu()[0, 0, :, :, :], int(data.detach().cpu().max()))
         #DisplaySlices(torch.argmax(out, dim=1).detach().cpu()[0,:,:,:], int(1))
 
-
+    print(f'Test loss:{batch_loss.avg} - Dice: {dice.avg}' )
 
 import SimpleITK as sitk
 
@@ -288,13 +313,12 @@ def objective(trial):
     mlflow.set_experiment("LA_segmentation_optuna_complete")
     with mlflow.start_run():
         # Get hyperparameter suggestions created by Optuna and log them as params using mlflow
-        _, optimizer_name = suggest_hyperparameters(trial)
+        positive_probability, optimizer_name = suggest_hyperparameters(trial)
         lr = 1e-4
-        positive_probability = 0.6
         # Create model
         model_name = '_'.join(
                         ['Unet3D', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
-                        str(positive_probability), 'normalize', str(opt.transforms),'lr',str(lr),'optim',str(optimizer_name)])
+                        str(positive_probability), 'normalize', str(opt.transforms),'lr',str(lr),'optim',str(optimizer_name),'GN',str(8)])
         create_dir(model_name)
 
         mlflow.log_param("Model_name", model_name)
@@ -303,6 +327,7 @@ def objective(trial):
         mlflow.log_param("Patch_dim", opt.patch_dim)
         mlflow.log_param("Positive_probability", positive_probability)
         mlflow.log_param("lr", lr)
+        mlflow.log_param('Group Norm', str(8))
         mlflow.log_param("optimizer_name", optimizer_name)
         mlflow.log_param("device", device)
 
@@ -365,7 +390,7 @@ def test():
 
     # Test data
 
-    positive_probability = 0.7
+    positive_probability = 0.6
     data_test = BalancedPatchGenerator(opt.path,
                                        (120, 120, 49),
                                        positive_prob=positive_probability,
@@ -386,7 +411,7 @@ def main():
 
         # Create the optuna study which shares the experiment name
         study = optuna.create_study(study_name="pytorch-mlflow-optuna", direction="minimize")
-        study.optimize(objective, n_trials=1)
+        study.optimize(objective, n_trials=3)
 
         # Print optuna study statistics
         print("\n++++++++++++++++++++++++++++++++++\n")
@@ -410,12 +435,11 @@ def suggest_hyperparameters(trial):
     # Learning rate on a logarithmic scale
     #lr = trial.suggest_float("lr", 1e-4,1e-4)
     # Dropout ratio in the range from 0.0 to 0.9 with step size 0.1
-    positive_probability = trial.suggest_float("positive_probability", 0.7, 0.9,step=0.1)
+    positive_probability = trial.suggest_float("positive_probability", 0.5, 0.7,step=0.1)
     # Optimizer to use as categorical value
     optimizer_name = trial.suggest_categorical("optimizer_name", ["Adam"])
 
     return positive_probability, optimizer_name
-
 
 
 def create_dir(model_name):

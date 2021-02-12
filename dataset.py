@@ -1,18 +1,17 @@
-
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import torch
-from tfm.utils.readers import VtkReader
-from tfm.utils.patches import *
+from utils.readers import VtkReader
+from utils.patches import *
 import numpy as np
 import glob
 import os
 import re
-import collections
-import functools
+from preprocessing import *
 import random
 import matplotlib.pyplot as plt
-from tfm.utils import DataVisualization
+from utils import DataVisualization
+
 
 class PatchesDataset(Dataset):
 
@@ -68,7 +67,7 @@ class PatchesDataset(Dataset):
         self.patient_patches = {}
         for i in range(len(self.patients_vol_mask)):
             v, m = self.patients_vol_mask[i]
-            v_patches = self.patch_function(v, self.patch_dim, self.patch_stepsize)  # extract MRI volume patches
+            v_patches = self.patch_function(v, self.patch_dim, self.patch_stepsize)  # extract MRI_volumes volume patches
             m_patches = self.patch_function(m, self.patch_dim, self.patch_stepsize)  # extract mask volume patches
             self.patient_patches[i] = v_patches, m_patches  # save vol & mask patches per patient
 
@@ -349,7 +348,10 @@ class LeftAtriumSegmentationDataset(Dataset):
 
 
 class BalancedPatchGenerator(Dataset):
-    def __init__(self, path, patch_shape, positive_prob=0.7, shuffle_images=False, mode=None, is_test=False,
+    """
+    FINAL DATASET CLASS
+    """
+    def __init__(self, path, patch_shape, positive_prob=0.7, shuffle_images=False, mode=None,
                  transform=None):
 
         self.path = path
@@ -357,8 +359,7 @@ class BalancedPatchGenerator(Dataset):
         self.positive_prob = positive_prob
         self.shuffle_images = shuffle_images
         self.mode = mode
-        self.is_test = is_test
-        assert self.mode in ['train', 'val']
+        assert self.mode in ['train', 'val','test']
         self.images_files = self.get_files(self.path, self.mode, 'MRI_volumes')
         self.masks_files = self.get_files(self.path, self.mode, 'masks')
         self.transform = transform
@@ -369,6 +370,10 @@ class BalancedPatchGenerator(Dataset):
         assert len(self.images_files) == len(self.masks_files), 'Num.images is different from num. masks'
 
         self.num_patients = len(self.images_files)
+
+        # Crop images
+        #print(os.path.join(os.path.join(self.path, 'masks'), self.mode))
+        #self.height, self.width, self.depth = overall_mask_boundaries(os.path.join(os.path.join(self.path, 'masks'), self.mode))
 
     @staticmethod
     def get_files(path, mode, type_files):
@@ -398,6 +403,10 @@ class BalancedPatchGenerator(Dataset):
     def get_candidate_indexes(tensor, value, patch_size):
         idxs_list = []
         idxs_condition = np.where(tensor == value)
+        #print(idxs_condition)
+        #print(len(idxs_condition[2]))
+        #print(tensor.shape)
+        #print(len(tensor.shape))
         position = np.random.randint(len(idxs_condition[0]))
         suggested_initial_points = [idxs_condition[i][position] for i in range(len(tensor.shape))]
         for i in range(len(suggested_initial_points)):
@@ -434,22 +443,52 @@ class BalancedPatchGenerator(Dataset):
         image_idx = idx
         patient_id = self.get_patient_identifier(image_idx)
         image_path, mask_path = self.get_image_mask_path(patient_id)
-
+        print(mask_path)
         # read arrays
-        image = VtkReader(image_path)[103:223, 110:230, 10:59]
-        mask = VtkReader(mask_path)[103:223, 110:230, 10:59]
+
+        # with re-size (accepts all kind of MRI volumes)
+
+
+        #print([self.height[0], self.height[1], self.width[0], self.width[1], self.depth[0], self.depth[1]])
+
+        image_original = VtkReader(image_path)
+        image_resized = resize_data(image_original,[360,360,60])
+
+        mask_original = VtkReader(mask_path)
+        mask_resized = resize_data(mask_original,[360,360,60])
+
+        self.height, self.width, self.depth = find_mask_boundaries_from_array(mask_resized)
+        print(self.height,self.width,self.depth)
+
+        #image = image_resized[self.height[0]-10:self.height[1]+10, self.width[0]-10:self.width[1]+10, self.depth[0]-10:self.depth[1]+10]
+        #mask = mask_resized[self.height[0]-10:self.height[1]+10, self.width[0]-10:self.width[1]+10, self.depth[0]-10:self.depth[1]+10]
+
+        image = image_resized[110:250, 110:250,10:]
+        mask = mask_resized[110:250, 110:250, 10:]
+
+
+        # without re-size
+        # image = VtkReader(image_path)[103:223, 110:230, 10:59]
+        # mask = VtkReader(mask_path)[103:223, 110:230, 10:59]
+
 
         # compute a value between 0 and 1 to
-        value = 1 if np.random.rand(1)[0] <= self.positive_prob else 0
-        idxs = self.get_indexes(self, mask, value, self.patch_shape)
+        if self.mode == 'train':
+            value = 1 if np.random.rand(1)[0] <= self.positive_prob else 0
+            idxs = self.get_indexes(self, mask, value, self.patch_shape)
 
-        # get patches
-        im_patch = image[idxs]
-        mask_patch = mask[idxs]
+            # get patches
+            im_patch = image[idxs]
+            mask_patch = mask[idxs]
+        else:
+            im_patch = image
+            mask_patch = mask
 
         # in case of transform (just for the train mode)
         if self.transform is not None:
-            im_patch = self.transform(im_patch.astype(np.float32))
+            #im_patch = self.transform(im_patch.astype(np.float32))
+            im_patch = (1/40.294086)*(im_patch.astype(np.float32) - 21.201036)
+
 
         # expand dimensions
         im_patch = np.expand_dims(im_patch, axis=0)
@@ -459,10 +498,8 @@ class BalancedPatchGenerator(Dataset):
         im_patch = torch.from_numpy(im_patch.astype(np.float32))
         mask_patch = torch.from_numpy(mask_patch.astype(np.float32))
 
-        if self.is_test:
-            return value, im_patch, mask_patch
-        else:
-            return im_patch, mask_patch
+
+        return im_patch, mask_patch
 
 
 
@@ -472,7 +509,7 @@ class BalancedPatchGenerator(Dataset):
 if __name__ == "__main__":
 
 
-    path = "/Users/jreventos/Desktop/TFM/tfm/patients_data2"
+    path = "patients_data2"
     # val_dataset = PatchesDataset_2(path,
     #                              transform=None,
     #                              patch_dim=[60, 60, 36],
@@ -489,32 +526,31 @@ if __name__ == "__main__":
                                  positive_prob=0.7,
                                  shuffle_images=True,
                                  mode='val',
-                                 is_test=False,
                                  transform=None)
 
     loader = DataLoader(ddd, batch_size=1, shuffle=False)
 
-
-
-
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for i, data in enumerate(loader):
         x, y_true = data
-        print(x.shape)
-        print(y_true.shape)
-        plt.figure("check", (18, 6))
-        plt.subplot(1, 2, 1)
-        plt.title(f"Image {i}")
-        plt.imshow(x[0, 0, :, :, 16], cmap="gray")
-        plt.subplot(1, 2, 2)
-        plt.title(f"label {i}")
-        plt.imshow(y_true[0, 0, :, :, 16])
-        plt.show()
-
-        DisplaySlices(x[0, 0, :, :, :], int(x.max()))
-        DisplaySlices(y_true[0,0,:,:,:], int(1))
-
-        print('Volume shape', i, ':', x.shape)
-        print('Mask shape', i, ':', y_true.shape)
+        x.to(device)
+        y_true.to(device)
+        # print(x.shape)
+        # print(y_true.shape)
+        # plt.figure("check", (18, 6))
+        # plt.subplot(1, 2, 1)
+        # plt.title(f"Image {i}")
+        # plt.imshow(x[0, 0, :, :, 16], cmap="gray")
+        # plt.subplot(1, 2, 2)
+        # plt.title(f"label {i}")
+        # plt.imshow(y_true[0, 0, :, :, 16])
+        # plt.show()
+        #
+        # DisplaySlices(x[0, 0, :, :, :], int(x.max()))
+        # DisplaySlices(y_true[0,0,:,:,:], int(1))
+        #
+        # print('Volume shape', i, ':', x.shape)
+        # print('masks shape', i, ':', y_true.shape)
 
 
     # val_dataset = LeftAtriumSegmentationDataset(root_dir, transform=None, image_size=320, mode='val',
