@@ -73,9 +73,9 @@ def custom_normalize(array,mean,sd):
     return (array - mean) / sd
 
 
-
-# array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data2/MRI_volumes/train/MRI_2.vtk")
-# norm_array = custom_normalize(array,mean =21.201036 , sd=40.294086)
+#mean =21.201036 , sd=40.294086
+# array = np.load('Dataset_arrays/MRI_volumes/train/MRI_2.npy')
+# norm_array = custom_normalize(array,mean = 158.37267, sd=468.0883)
 # DisplaySlices(array, int(array.max()))
 # DisplaySlices(norm_array, int(norm_array.max()))
 
@@ -148,6 +148,7 @@ def find_mask_boundaries(path):
     else:
         # print(path)
         mask_array = VtkReader(path)
+        mask_array= resize_data(mask_array, [360, 360, 60])
 
         # Find coordinates in the 3 axis
 
@@ -207,17 +208,12 @@ def overall_mask_boundaries(dir_mask):
         all_y_idx.extend(y_idx)
         all_z_idx.extend(z_idx)
 
-
     all_x_idx = set(all_x_idx)
     all_y_idx = set(all_y_idx)
     all_z_idx = set(all_z_idx)
 
-
-
     return [min(all_x_idx), max(all_x_idx)], [min(all_y_idx), max(all_y_idx)], [min(all_z_idx), max(all_z_idx)]
 
-
-overall_mask_boundaries("patients_data/masks/test")
 
 def resize_volume(vol_array,x_idx = (0,221),y_idx = (131,209),z_idx=(0,56),error_percentage= 0.1):
     "Resize volumes from the paramteres extracted with overal_vol_crop_corners"
@@ -235,18 +231,22 @@ def compute_mean_std(path):
     :return: mean, std
     """
 
-    vol_dirs = []
-    for i in next(os.walk(path))[1]:
-        name = os.path.join(path, i)
-        for img_path in glob.glob(name + '/*.vtk'):
-            vol_dirs.append(img_path)
+    vol_dirs = os.listdir(path)
+    # for i in next(os.walk(path))[1]:
+    #     name = os.path.join(path, i)
+    #     for img_path in glob.glob(name + '/*.npy'):
+    #         vol_dirs.append(img_path)
 
     vol_dirs = sorted(vol_dirs, key=lambda x: float(re.findall("(\d+)", x)[0]))
-
+    print(vol_dirs)
     vol_arrays_list = []
     for dir in vol_dirs:
-        vol_array = VtkReader(dir)
-        vol_array = vol_array[:,:,0:58] # Not all volumes have the same number of slices, we took the minimum.
+        numpy_dir = path +'/'+dir
+        print(numpy_dir)
+        vol_array = np.load(numpy_dir)
+        print(vol_array)
+        #vol_array = resize_volume(vol_array,[360,360,60])
+        #vol_array = vol_array[:,:,:] # Not all volumes have the same number of slices, we took the minimum.
         vol_arrays_list.append(vol_array)
 
     # Compute mean and standard variation
@@ -257,9 +257,8 @@ def compute_mean_std(path):
     print('Std',std)
     return mean, std
 
+#compute_mean_std("C:/Users/Roger/Desktop/JANA/tfm/Dataset_arrays/MRI_volumes/train")
 
-#path = '/Users/jreventos/Desktop/TFM/tfm/patients_data2/MRI_volumes'
-#compute_mean_std(path)
 
 
 def volume_array_histogram(array):

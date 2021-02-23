@@ -36,28 +36,28 @@ def create_csv_names(root_dir_images,root_dir_labels):
         print('Not the same length')
         pass
 
-#root_dir_labels ='/Users/jreventos/Desktop/TFM/tfm/patients_data/masks'
-#root_dir_images ='/Users/jreventos/Desktop/TFM/tfm/patients_data/MRI_volumes'
+#root_dir_labels ='/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks'
+#root_dir_images ='/Users/jreventos/Desktop/TFM/tfm/patients_data2/MRI_volumes'
 #create_csv_names(root_dir_images,root_dir_labels)
 
 
 
 
-# Split datasets in training and validation
-df = pd.read_csv('names.csv')
-X_train, X_val, y_train, y_val = train_test_split(df['IMAGE NAME'], df['LABEL NAME'], test_size=0.2, random_state= 42)
-
-train = pd.DataFrame({'IMAGE': X_train, 'LABEL': y_train})
-val = pd.DataFrame({'IMAGE': X_val, 'LABEL': y_val})
-
-train.to_csv('labels_train.csv', index=False, header=True)
-val.to_csv('labels_val.csv', index=False, header=True)
-
-input_train = 'labels_train.csv'
-input_val = 'labels_val.csv'
-
-import os
-import shutil
+# # Split datasets in training and validation
+# df = pd.read_csv('names.csv')
+# X_train, X_val, y_train, y_val = train_test_split(df['IMAGE NAME'], df['LABEL NAME'], test_size=0.2, random_state= 42)
+#
+# train = pd.DataFrame({'IMAGE': X_train, 'LABEL': y_train})
+# val = pd.DataFrame({'IMAGE': X_val, 'LABEL': y_val})
+#
+# train.to_csv('labels_train.csv', index=False, header=True)
+# val.to_csv('labels_val.csv', index=False, header=True)
+#
+# input_train = 'labels_train.csv'
+# input_val = 'labels_val.csv'
+#
+# import os
+# import shutil
 
 
 def move_files(dir,names):
@@ -100,11 +100,39 @@ def move_files(dir,names):
             shutil.move(source,move_to_labels)
 
 
+def move_files_general_electrics(mypath):
+    import os
+    import glob
+    import shutil
+    lista = os.listdir(mypath)
 
-#dir = '/Users/jreventos/Desktop/TFM/tfm/patients_data'
-#names_train = 'labels_train.csv'
-#names_val = 'labels_val.csv'
-#move_files(dir,names_val)
+    j = 0
+    for i in lista[5:]:
+        j+=1
+        print(i)
+        vtk_path = os.path.join(mypath, i)
+        os.chdir(vtk_path)
+        for ii in glob.glob("*.vtk"):
+            print(ii)
+            path = os.path.join(vtk_path, ii)
+            copy_path = os.path.join('C:/Users/Roger/Desktop/JANA/tfm/patients_data/masks/train',ii)
+            print(path)
+            print(copy_path)
+
+            shutil.copy(path,copy_path)
+
+from preprocessing import *
+from readers import *
+
+def save_resized_numpy(mypath,outfile):
 
 
+    for i in os.listdir(mypath):
+        vtk_path = os.path.join(mypath,i)
+        print(vtk_path)
+        vtk_original_size = VtkReader(vtk_path)
+        vtk_resized = resize_data(vtk_original_size,[360,360,60])
+        np.save(outfile+'/'+i[:-4],vtk_resized)
+
+#save_resized_numpy("C:/Users/Roger/Desktop/JANA/tfm/patients_data/masks/train","C:/Users/Roger/Desktop/JANA/tfm/Dataset_arrays/masks/train")
 

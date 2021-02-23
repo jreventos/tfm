@@ -147,8 +147,8 @@ class UNet3D(Abstract3DUNet):
         <https://arxiv.org/pdf/1606.06650.pdf>`.
     """
 
-    def __init__(self, in_channels, out_channels, final_sigmoid=False, f_maps=32, layer_order='gcr',
-                 num_groups=4, num_levels=3, is_segmentation=True, conv_padding=1, **kwargs):
+    def __init__(self, in_channels, out_channels, final_sigmoid=False, f_maps=64, layer_order='gcr',
+                 num_groups=8, num_levels=4, is_segmentation=True, conv_padding=1, **kwargs):
         super(UNet3D, self).__init__(in_channels=in_channels, out_channels=out_channels, final_sigmoid=final_sigmoid,
                                      f_maps=f_maps, layer_order=layer_order,
                                      num_groups=num_groups, num_levels=num_levels, is_segmentation=is_segmentation,
@@ -159,12 +159,14 @@ if __name__ == '__main__':
     import torch
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net = UNet3D(in_channels=1,out_channels=2)
-    print('Parameters:',sum(p.data.nelement() for p in net.parameters()))
-    print(net)
-    #net.to(device)
-    data = torch.Tensor(1, 1, 32, 32, 32)
-    start_time = time.time()
 
+    print('Parameters:',sum(p.data.nelement() for p in net.parameters()))
+    #print(net)
+    net.to(device)
+    data = torch.Tensor(1, 1, 32, 32, 32)
+    data = data.type(torch.cuda.FloatTensor)
+    data = data.to(device)
+    start_time = time.time()
     out = net(data)
     print(out)
     print(out.shape)

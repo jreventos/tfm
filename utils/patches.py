@@ -1,11 +1,11 @@
 
 import numpy as np
-from readers import*
-from DataVisualization import*
+from utils.readers import*
+from utils.DataVisualization import*
 
 # Original source : https://github.com/JielongZ/3D-UNet-PyTorch-Implementation/blob/master/image_reconstruct.py
 
-def get_img_patch_idxs(img, overlap_stepsize):
+def get_vol_patch_idxs(array, patch_dim, overlap_stepsize):
     """
     This function is used to get patch indices of a single image
     The patch indices generated here are used to crop one image into patches
@@ -14,11 +14,14 @@ def get_img_patch_idxs(img, overlap_stepsize):
     :param overlap_stepsize: the overlap step size to generate patches
     :return: patch indices
     """
-    patch_idxs = []
-    depth, height, width = img.shape
-    print(depth,height,width)
-    patch_depth, patch_height, patch_width = 128, 128, 56 # TODO: define final patches dimensions
 
+    # Array dimensions
+    depth, height, width = array.shape
+
+    # Patch dimensions
+    patch_depth, patch_height, patch_width = patch_dim[0], patch_dim[1], patch_dim[2]  # TODO: define final patches dimensions
+
+    # Patch axis ranges:
     depth_range = list(range(0, depth - patch_depth + 1, overlap_stepsize))
     height_range = list(range(0, height - patch_height + 1, overlap_stepsize))
     width_range = list(range(0, width - patch_width + 1, overlap_stepsize))
@@ -30,6 +33,8 @@ def get_img_patch_idxs(img, overlap_stepsize):
     if (width - patch_width) % overlap_stepsize != 0:
         width_range.append(width - patch_width)
 
+    # Compute patch indx
+    patch_idxs = []
     for d in depth_range:
         for h in height_range:
             for w in width_range:
@@ -37,34 +42,32 @@ def get_img_patch_idxs(img, overlap_stepsize):
 
     return patch_idxs
 
-#array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_44.vtk")
-#patch_idxs = get_img_patch_idxs(array,64)
-#print(patch_idxs)
-#print(len(patch_idxs))
 
-def volume_patches(data_path, overlap_stepsize):
+def volume_patches(array, patch_dim, overlap_stepsize):
     """
     Cropping volumetric images into various patches with fixed size.
 
     :param data_path: volume path
     :param overlap_stepsize: int
-    :return: dictionary of the different patches
+    :return: list of all patches
     """
-    patch_dict = dict()
-    patch_depth, patch_height, patch_width = 128, 128, 56 # TODO: define final patches dimensions
 
-    array = VtkReader(data_path)
-    patch_idxs = get_img_patch_idxs(img=array, overlap_stepsize=overlap_stepsize)
+    patch_depth, patch_height, patch_width = patch_dim[0], patch_dim[1], patch_dim[
+        2]  # TODO: define final patches dimensions
 
+    patch_idxs = get_vol_patch_idxs(array, patch_dim, overlap_stepsize)
+
+    vol_patches = []
     for j in range(len(patch_idxs)):
         d, h, w = patch_idxs[j]
         cropped_array = array[d: d + patch_depth, h: h + patch_height, w: w + patch_width]
-        patch_dict[j+1] = cropped_array
+        vol_patches.append(cropped_array)
 
-    return patch_dict
+    return vol_patches
 
-#dict = crop_image("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_44.vtk",64)
-#print(len(dict))
+#array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_44.vtk")
+#patches = get_vol_patch_idxs(array[103:223,110:230,10:59],[60,60,24],32)
+#print(patches)
 
 def recombine_results(data_path,overlap_stepsize):
     """
@@ -99,8 +102,8 @@ def recombine_results(data_path,overlap_stepsize):
 
     return predicted_mask
 
-# predicted_array = recombine_results("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_44.vtk",64)
-# true_array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_44.vtk")
+#predicted_array = recombine_results("/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_44.vtk",64)
+# true_array = VtkReader("/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_44.vtk")
 # print(np.array_equal(predicted_array,true_array))
 
 

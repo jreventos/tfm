@@ -1,12 +1,11 @@
 from tensorboardX import SummaryWriter
 #tensorboard --logdir=runs
 import argparse
-import time
+import math
 from model.Unet3D import *
 from model.Unet import UNet
 from dataset import*
-from utils.patches import *
-
+from utils.readers import *
 from preprocessing import custom_normalize
 
 import mlflow.pytorch
@@ -24,23 +23,21 @@ parser = argparse.ArgumentParser()
 # parser.add_argument("--seed", type=int, default=42, help="Seed")
 
 # Data loader parameters
-parser.add_argument("--path", type=str, default='patients_data',
+parser.add_argument("--path", type=str, default='Dataset_arrays',
                     help="Path to the training and val data")
-parser.add_argument("--mean", type=list, default=21.201036, help="Mean of the data set MRI_volumes volumes")
-parser.add_argument("--sd", type=list, default=40.294086, help="Standard deviation of the data set MRI_volumes volumes")
 parser.add_argument("--patch_dim", type=list, default=[60, 60, 32], help="Patches dimensions")
 parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
 parser.add_argument("--transforms", type=bool, default=True, help="transforms")
 
 # Model parameters
 parser.add_argument("--is_load", type=bool, default=True, help="weights initialization")
-parser.add_argument("--load_path", type=str, default='models_checkpoints/Unet3D_epoch_300_batch_1_patchdim_[60, 60, 32]_posprob_0.7_normalize_True_lr_0.0001_optim_Adam_GN_8/checkpoint_300.pth', help="path to the weights net initialization")
+parser.add_argument("--load_path", type=str, default='models_checkpoints/ExtendedDataset_Unet3D_epoch_500_batch_1_patchdim_[60, 60, 32]_posprob_0.7_normalize_True_lr_0.0001_optim_Adam_GN_8/checkpoint_500.pth', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 
 
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=300, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=500, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=20, help="Verbose, when we want to do a print")
@@ -80,8 +77,10 @@ class average_metrics(object):
 def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
     total_batch = len(data_loader)
     batch_loss = average_metrics()
-    hausdorff = average_metrics()
-    dice = average_metrics()
+
+    batch_dice = average_metrics()
+    post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=2)
+    post_label = AsDiscrete(to_onehot=True, n_classes=2)
 
     if mode_train:
         model.train()
@@ -109,17 +108,20 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
         loss = criterion(out.to(device), y.to(device))
 
         # Evaluation
-        hausdorff.update(out.to(device),y.to(device))
-        dice.update(out.to(device), y.to(device))
+        outputs = post_pred(out.to(device))
+        labels = post_label(y.to(device))
+        dice_val = compute_meandice(y_pred=outputs, y=labels, include_background=False)
+        if math.isnan(dice_val.item()):
+            pass
+        else:
+            batch_dice.update(dice_val.item())
 
 
         # Backpropagate error
         loss.backward()
 
         # Update loss
-
         batch_loss.update(loss.item())
-
 
         # Optimize
         if mode_train:
@@ -127,9 +129,22 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
         # Log
         if (batch_idx + 1) % opt.verbose == 0 and mode_train:
-            print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} ')
+            print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} - Dice: {batch_dice.val}')
 
-    return batch_loss.avg
+    return batch_loss.avg, batch_dice.avg
+
+def generate_vtk_from_numpy(ndarray,filename):
+    from tvtk.api import tvtk, write_data
+
+    grid = tvtk.ImageData(spacing=(1.25, 1.25, 2.5), origin=(0, 0, 0),
+                          dimensions=ndarray.shape)
+    grid.point_data.scalars = ndarray.ravel(order='F')
+    grid.point_data.scalars.name = 'scalars'
+
+    # Writes legacy ".vtk" format if filename ends with "vtk", otherwise
+    # this will write data using the newer xml-based format.
+    write_data(grid, filename)
+
 
 def inference(data_loader, model, criterion):
     total_batch = len(data_loader)
@@ -174,110 +189,68 @@ def inference(data_loader, model, criterion):
 
         print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val}  -Dice: {dice.val} ')
 
-        print(out.shape[4])
 
         # plot slice
         slice = out.shape[4]//2
-
         plt.figure("check", (18, 6))
         plt.subplot(1, 3, 1)
-        plt.title(f"image {batch_idx}")
+        plt.title(f"image {batch_idx+1}")
         plt.imshow(data.detach().cpu()[0, 0, :, :, slice], cmap="gray")
         plt.subplot(1, 3, 2)
-        plt.title(f"label {batch_idx}")
+        plt.title(f"label {batch_idx+1}")
         plt.imshow(y.detach().cpu()[0, 0, :, :, slice])
         plt.subplot(1, 3, 3)
-        plt.title(f"output {batch_idx}")
+        plt.title(f"output {batch_idx+1}")
         plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, slice])
         plt.show()
         #print(type(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]))
         #print(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:].shape)
-        out_array = torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]
 
-        #output_file = f'out_vtk_'+str(batch_idx)+'.vtk'
-        #vtk_out = convert2(out_array,output_file)
-        #print(type(vtk_out))
+        y_predicted_array = torch.argmax(out, dim=1).detach().cpu().numpy().astype('float')[0,:,:,slice:]
+        y_true_array = y.detach().cpu().numpy()[0, 0, :, :, slice:]
+        mri_array = data.detach().cpu().numpy()[0, 0, :, :, slice:]
 
+        file = f'patient_{batch_idx+1}.vtk'
+        generate_vtk_from_numpy(y_predicted_array,'predicted_'+ file)
+        generate_vtk_from_numpy(y_true_array,'true_'+file)
+        generate_vtk_from_numpy(mri_array,'mri_'+file)
 
-       #import pyvista as pv
-        #data = pv.wrap(out_array)
-        # print(type(data))
-       # data.plot(volume=True)
-
-        #vtk_out = numpy_to_vtk(torch.argmax(out, dim=1).detach().cpu()[0,:,:,:])
-        #DisplaySlices(data.detach().cpu()[0, 0, :, :, :], int(data.detach().cpu().max()))
-        #DisplaySlices(torch.argmax(out, dim=1).detach().cpu()[0,:,:,:], int(1))
 
     print(f'Test loss:{batch_loss.avg} - Dice: {dice.avg}' )
 
-import SimpleITK as sitk
 
-
-
-# Convert numpy array to VTK array (vtkFloatArray)
-def convert2(ndarray,outputfile):
-    array_tarans = ndarray.transpose(2, 1, 0)
-    spacings = [(array_tarans[:,0,0].max() -array_tarans[:,0,0].min() ) / (array_tarans.shape[0] - 1), \
-               (array_tarans[0,:,0].max() -array_tarans[0,:,0].min() ) / (array_tarans.shape[1] - 1), \
-                (array_tarans[0,0,:].max() - array_tarans[0,0,:].min()) / (array_tarans.shape[2] - 1)]
-
-    print(spacings)
-
-    vtk_data_array = numpy_support.numpy_to_vtk(
-        num_array=ndarray.transpose(2, 1, 0).ravel(),  # ndarray contains the fitting result from the points. It is a 3D array
-        deep=True,
-        array_type=vtk.VTK_FLOAT)
-
-
-    # Convert the VTK array to vtkImageData
-    img_vtk = vtk.vtkImageData()
-    img_vtk.SetDimensions(ndarray.shape)
-    img_vtk.SetSpacing(spacings[0],spacings[1],spacings[2])
-    img_vtk.GetPointData().SetScalars(vtk_data_array)
-
-
-    writer = vtk.vtkXMLImageDataWriter()
-    writer.SetFileName(outputfile)
-    if vtk.VTK_MAJOR_VERSION <= 5:
-        writer.SetInputConnection(img_vtk.GetProducerPort())
-    else:
-        writer.SetInputData(img_vtk)
-    writer.Write()
-
-    return img_vtk
-
-
-def write(writer, epoch, loss):
-    it = opt.epoch_init + epoch
-    writer.add_scalar('Loss', loss, it)
 
 
 def train(data_loader_train, data_loader_val, model, criterion, optimizer, early_true,model_name):
-    # Writer
-    writer_train = SummaryWriter('runs/' + model_name + '_train')
-    writer_val = SummaryWriter('runs/' + model_name + '_val')
+
     average_train_loss = average_metrics()
     average_val_loss = average_metrics()
+    average_train_dice = average_metrics()
+    average_val_dice = average_metrics()
+
     best_val_loss = None
+    best_val_dice = None
     counter = 0
     for epoch in range(opt.epoch):
         print("----------")
         print(f'Epoch: {epoch + 1}/{opt.epoch}')
 
         # Train
-        loss_train = train_epoch(data_loader_train, model, criterion, optimizer, mode_train=True)
-        print(f'Training - Loss: {loss_train} ')
-        write(writer_train, epoch, loss_train)
+        loss_train, dice_train = train_epoch(data_loader_train, model, criterion, optimizer, mode_train=True)
+        print(f'Training - Loss: {loss_train} - Dice: {dice_train}')
 
         mlflow.log_metric("Train_loss_evolution", loss_train, step=epoch)
+        mlflow.log_metric("Train_dice_evolution", dice_train, step=epoch)
+
         average_train_loss.update(loss_train)
+        average_train_dice.update(dice_train)
+
         mlflow.log_metric("Average_train_loss", average_train_loss.avg, step=epoch)
+        mlflow.log_metric("Average_train_dice", average_train_dice.avg, step=epoch)
 
         # Validation
-        loss_val = train_epoch(data_loader_val, model, criterion, mode_train=False)
-        print(f'Validation - Loss: {loss_val}\n')
-        write(writer_val, epoch, loss_val)
-
+        loss_val, dice_val = train_epoch(data_loader_val, model, criterion, mode_train=False)
+        print(f'Validation - Loss: {loss_val} - Dice: {dice_val} \n')
 
         # Early stopping
         #if early_true:
@@ -289,19 +262,23 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
             #if counter > opt.early_stopping:
              #   break
 
+        if best_val_dice is None or best_val_dice < dice_val:
+            best_val_dice = dice_val
+
         # Save Unet
         if opt.save_models and (epoch + 1) % opt.verbose == 0:
             torch.save(model.state_dict(), 'models_checkpoints/{}/checkpoint_{}.pth'.format(model_name,epoch+1))
 
 
         mlflow.log_metric("Val_loss_evolution", loss_val, step=epoch)
+        mlflow.log_metric("Val_dice_evolution", dice_val, step=epoch)
         average_val_loss.update(loss_val)
+        average_val_dice.update(dice_val)
         mlflow.log_metric("Average_val_loss", average_val_loss.avg, step=epoch)
+        mlflow.log_metric("Average_val_dice", average_val_dice.avg, step=epoch)
         mlflow.log_metric('Best_val_loss',best_val_loss,step=epoch)
+        mlflow.log_metric('Best_val_dice', best_val_dice, step=epoch)
 
-    # Close writer
-    writer_train.close()
-    writer_val.close()
 
     return best_val_loss
 
@@ -315,9 +292,10 @@ def objective(trial):
         # Get hyperparameter suggestions created by Optuna and log them as params using mlflow
         positive_probability, optimizer_name = suggest_hyperparameters(trial)
         lr = 1e-4
+        positive_probability = 0.7
         # Create model
         model_name = '_'.join(
-                        ['Unet3D', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
+                        ['ExtendedDataset_Unet3D', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
                         str(positive_probability), 'normalize', str(opt.transforms),'lr',str(lr),'optim',str(optimizer_name),'GN',str(8)])
         create_dir(model_name)
 
@@ -352,16 +330,16 @@ def objective(trial):
         data_train = BalancedPatchGenerator(opt.path,
                                             opt.patch_dim,
                                             positive_prob=positive_probability,
-                                            shuffle_images=False,
+                                            shuffle_images=True,
                                             mode='train',
-                                            transform=True)
+                                            transform=opt.transforms)
 
         data_loader_train = DataLoader(data_train, batch_size=opt.batch, shuffle=True, num_workers=4)
 
         # Validation data
         data_val = BalancedPatchGenerator(opt.path,
-                                          (120, 120, 49),
-                                          positive_prob=positive_probability,
+                                          None,
+                                          positive_prob=0.7,
                                           shuffle_images=False,
                                           mode='val',
                                           transform=None)
@@ -389,11 +367,9 @@ def test():
     criterion = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
 
     # Test data
-
-    positive_probability = 0.6
     data_test = BalancedPatchGenerator(opt.path,
-                                       (120, 120, 49),
-                                       positive_prob=positive_probability,
+                                       None,
+                                       positive_prob=0.7,
                                        shuffle_images=False,
                                        mode='test',
                                        transform=None)
@@ -411,7 +387,7 @@ def main():
 
         # Create the optuna study which shares the experiment name
         study = optuna.create_study(study_name="pytorch-mlflow-optuna", direction="minimize")
-        study.optimize(objective, n_trials=3)
+        study.optimize(objective, n_trials=1)
 
         # Print optuna study statistics
         print("\n++++++++++++++++++++++++++++++++++\n")

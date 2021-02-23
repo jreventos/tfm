@@ -2,7 +2,7 @@ import os
 import vtk
 from vtk import vtkStructuredPointsReader, vtkPolyDataReader, vtkPolyData, vtkStructuredPointsWriter
 from vtk.util import numpy_support
-from vtk.util.numpy_support import vtk_to_numpy
+from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 
 
 def BinaryToAscii(PathBinary):
@@ -53,23 +53,28 @@ def VtkReader(VtkPath):
     # Get data
     data = reader.GetOutput()
     dim = data.GetDimensions()
+    height =dim[0]
+    width= dim[1]
     num_slices = dim[-1]
 
     intensities = data.GetPointData().GetArray(0)
     numpy_array = vtk_to_numpy(intensities)
 
-    array_reshape = numpy_array.reshape([320, 320, num_slices], order='F')
+    array_reshape = numpy_array.reshape([height, width, num_slices], order='F')
 
 
     return array_reshape
+
+
+
 
 # Read VTK FILES: (Another way to read VTK files)
 # import SimpleITK as sitk
 #
 # reader = sitk.ImageFileReader()
 # reader.SetImageIO("VTKImageIO")
-# #inputImageFileName = '/Users/jreventos/Desktop/TFM/tfm/patients_data/MRI_volumes/train/MRI_2.vtk'
-# inputImageFileName = "/Users/jreventos/Desktop/TFM/tfm/patients_data/masks/train/mask_2.vtk"
+# #inputImageFileName = '/Users/jreventos/Desktop/TFM/Rtfm/patients_data2/MRI_volumes/train/MRI_2.vtk'
+# inputImageFileName = "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_2.vtk"
 # reader.SetFileName(inputImageFileName)
 # image = reader.Execute();
 # nda = sitk.GetArrayFromImage(image)
@@ -121,6 +126,8 @@ def DicomReader(PathDicom):
     #print(ArrayDicom)
 
     return ArrayDicom
+
+
 
 
 
