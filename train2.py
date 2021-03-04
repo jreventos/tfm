@@ -17,6 +17,8 @@ from monai.inferers import sliding_window_inference
 from monai.transforms import AsDiscrete
 import optuna
 
+from BoundaryLoss import *
+
 # Parser
 parser = argparse.ArgumentParser()
 # Set seed
@@ -30,8 +32,8 @@ parser.add_argument("--positive_probability", type=int, default=0.7, help="% of 
 parser.add_argument("--transforms", type=bool, default=True, help="transforms")
 
 # Model parameters
-parser.add_argument("--is_load", type=bool, default=True, help="weights initialization")
-parser.add_argument("--load_path", type=str, default='models_checkpoints/ExtendedDataset_Unet3D_epoch_500_batch_1_patchdim_[60, 60, 32]_posprob_0.7_normalize_True_lr_0.0001_optim_Adam_GN_8/checkpoint_500.pth', help="path to the weights net initialization")
+parser.add_argument("--is_load", type=bool, default=False, help="weights initialization")
+parser.add_argument("--load_path", type=str, default='models_checkpoints/ExtendedDataset_epoch_500_batch_1_patchdim_[60, 60, 32]_posprob_0.7_normalize_True_lr_0.0001_optim_Adam_GDL_8_GD_True_BL_True_alpha_0.1/checkpoint_500.pth', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 
 
@@ -40,7 +42,7 @@ parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 parser.add_argument("--epoch", type=int, default=500, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
-parser.add_argument("--verbose", type=int, default=20, help="Verbose, when we want to do a print")
+parser.add_argument("--verbose", type=int, default=10, help="Verbose, when we want to do a print")
 
 parser.add_argument('--early_true', type=bool, default=False, help='If we want early stopping')
 parser.add_argument("--early_stopping", type=int, default=5, help="Number of epochs without improvement to stop")
@@ -74,7 +76,7 @@ class average_metrics(object):
         self.avg = self.sum / self.count
 
 
-def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
+def train_epoch(data_loader, model, criterion1, criterion2, optimizer=None, mode_train=True):
     total_batch = len(data_loader)
     batch_loss = average_metrics()
 
@@ -97,31 +99,57 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
             optimizer.zero_grad()
 
         # Get prediction
-
         out = model(data.to(device))
 
-
-        # print(out)
-        # print(out.shape)
-
-        # Get loss
-        loss = criterion(out.to(device), y.to(device))
 
         # Evaluation
         outputs = post_pred(out.to(device))
         labels = post_label(y.to(device))
         dice_val = compute_meandice(y_pred=outputs, y=labels, include_background=False)
+
         if math.isnan(dice_val.item()):
             pass
         else:
             batch_dice.update(dice_val.item())
 
+        # Losses
+        if criterion1 and criterion2 == None:
+            # Get REGION loss
+            region_loss = criterion1(out.to(device), y.to(device))
 
-        # Backpropagate error
-        loss.backward()
+            # Backpropagate error
+            region_loss.backward()
+            # Update loss
+            batch_loss.update(region_loss.item())
 
-        # Update loss
-        batch_loss.update(loss.item())
+        elif criterion1 == None and criterion2:
+
+            # Get CONTOUR loss
+            dist = one_hot2dist(y.detach().cpu().numpy())
+            dist = torch.Tensor(dist)
+            contour_loss = criterion2(out.to(device), dist.to(device))
+
+            # Backpropagate error
+            contour_loss.backward()
+            # Update loss
+            batch_loss.update(contour_loss.item())
+
+        else:
+            # Get REGION loss
+            region_loss = criterion1(out.to(device), y.to(device))
+
+            # Get CONTOUR loss
+            dist = one_hot2dist(y.detach().cpu().numpy())
+            dist = torch.Tensor(dist)
+            contour_loss = criterion2(outputs.to(device), dist.to(device))
+
+            # Combination both losses
+            alpha = 0.3
+            loss = (1-alpha)*region_loss + alpha*contour_loss
+            # Backpropagate error
+            loss.backward()
+            # Update loss
+            batch_loss.update(loss.item())
 
         # Optimize
         if mode_train:
@@ -129,7 +157,12 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
         # Log
         if (batch_idx + 1) % opt.verbose == 0 and mode_train:
-            print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} - Dice: {batch_dice.val}')
+            if criterion1 and criterion2 == None:
+                print(f'Iteration {(batch_idx + 1)}/{total_batch} - GD Loss: {batch_loss.val} - Dice: {batch_dice.val}')
+            elif criterion1 == None and criterion2:
+                print(f'Iteration {(batch_idx + 1)}/{total_batch} - B Loss: {batch_loss.val} - Dice: {batch_dice.val}')
+            else:
+                print(f'Iteration {(batch_idx + 1)}/{total_batch} - GD & B Loss: {batch_loss.val} - Dice: {batch_dice.val}')
 
     return batch_loss.avg, batch_dice.avg
 
@@ -186,9 +219,7 @@ def inference(data_loader, model, criterion):
         f1_score.update(compute_confusion_matrix_metric('f1 score', conf_matrix).item())
         accuracy.update(compute_confusion_matrix_metric('accuracy', conf_matrix).item())
 
-
         print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val}  -Dice: {dice.val} ')
-
 
         # plot slice
         slice = out.shape[4]//2
@@ -221,7 +252,7 @@ def inference(data_loader, model, criterion):
 
 
 
-def train(data_loader_train, data_loader_val, model, criterion, optimizer, early_true,model_name):
+def train(data_loader_train, data_loader_val, model, criterion1,criterion2, optimizer, early_true,model_name):
 
     average_train_loss = average_metrics()
     average_val_loss = average_metrics()
@@ -236,9 +267,9 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
         print(f'Epoch: {epoch + 1}/{opt.epoch}')
 
         # Train
-        loss_train, dice_train = train_epoch(data_loader_train, model, criterion, optimizer, mode_train=True)
-        print(f'Training - Loss: {loss_train} - Dice: {dice_train}')
+        loss_train, dice_train = train_epoch(data_loader_train, model, criterion1, criterion2, optimizer, mode_train=True)
 
+        print(f'Training - Loss: {loss_train} - Dice: {dice_train}')
         mlflow.log_metric("Train_loss_evolution", loss_train, step=epoch)
         mlflow.log_metric("Train_dice_evolution", dice_train, step=epoch)
 
@@ -249,7 +280,7 @@ def train(data_loader_train, data_loader_val, model, criterion, optimizer, early
         mlflow.log_metric("Average_train_dice", average_train_dice.avg, step=epoch)
 
         # Validation
-        loss_val, dice_val = train_epoch(data_loader_val, model, criterion, mode_train=False)
+        loss_val, dice_val = train_epoch(data_loader_val, model, criterion1,criterion2, mode_train=False)
         print(f'Validation - Loss: {loss_val} - Dice: {dice_val} \n')
 
         # Early stopping
@@ -295,8 +326,9 @@ def objective(trial):
         positive_probability = 0.7
         # Create model
         model_name = '_'.join(
-                        ['ExtendedDataset_Unet3D', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
-                        str(positive_probability), 'normalize', str(opt.transforms),'lr',str(lr),'optim',str(optimizer_name),'GN',str(8)])
+                        ['ExtendedDataset', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
+                        str(positive_probability), 'normalize', str(opt.transforms),'lr',str(lr),'optim',str(optimizer_name),
+                         'GDL',str(8),'GD',str(True),'BL',str(True),'alpha',str(0.3)])
         create_dir(model_name)
 
         mlflow.log_param("Model_name", model_name)
@@ -318,7 +350,8 @@ def objective(trial):
 
         # # Loss function
         # loss = metrics.GeneralizedDiceLoss()
-        criterion = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
+        criterion1 = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
+        criterion2 = BoundaryLoss(idc=[0])
 
         # Optimizer
         #optimizer = torch.optim.Adam(net.parameters(), 1e-4)
@@ -346,7 +379,7 @@ def objective(trial):
 
         data_loader_val = DataLoader(data_val, batch_size=opt.batch, num_workers=4)
 
-        best_val_loss = train(data_loader_train, data_loader_val, net, criterion, optimizer, opt.early_true,model_name)
+        best_val_loss = train(data_loader_train, data_loader_val, net, criterion1,criterion2, optimizer, opt.early_true,model_name)
 
         return best_val_loss
 

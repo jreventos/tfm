@@ -42,6 +42,7 @@ class BalancedPatchGenerator(Dataset):
         self.num_patients = len(self.images_files)
 
 
+
         # Crop images
         #print(os.path.join(os.path.join(self.path, 'masks'), self.mode))
         #self.height, self.width, self.depth = overall_mask_boundaries(os.path.join(os.path.join(self.path, 'masks'), self.mode))
@@ -118,19 +119,14 @@ class BalancedPatchGenerator(Dataset):
 
 
         # read arrays
-        # with re-size (accepts all kind of MRI_volumes volumes)
-        #print([self.height[0], self.height[1], self.width[0], self.width[1], self.depth[0], self.depth[1]])
-        #image_original = VtkReader(image_path)
-        #image_resized = resize_data(image_original,[360,360,60])
-        #mask_original = VtkReader(mask_path)
-        #mask_resized = resize_data(mask_original,[360,360,60])
-
-       #self.height, self.width, self.depth = find_mask_boundaries_from_array(mask_resized)
-        #image = image_resized[self.height[0]-10:self.height[1]+10, self.width[0]-10:self.width[1]+10, self.depth[0]-10:self.depth[1]+10]
-        #mask = mask_resized[self.height[0]-10:self.height[1]+10, self.width[0]-10:self.width[1]+10, self.depth[0]-10:self.depth[1]+10]
-
-        #image = image_resized[110:250, 110:250,10:]
-       # mask = mask_resized[110:250, 110:250, 10:]
+        # image_original = VtkReader(image_path)
+        # image_resized = resize_data(image_original,[360,360,60])
+        # mask_original = VtkReader(mask_path)
+        # mask_resized = resize_data(mask_original,[360,360,60])
+        #
+        #
+        # image = image_resized[110:250, 110:250,10:]
+        # mask = mask_resized[110:250, 110:250, 10:]
 
         #Values computed with the new dataset([119, 260], [148, 260], [13, 59])
         #image = image_resized[110:265, 140:265,10:]
@@ -139,9 +135,9 @@ class BalancedPatchGenerator(Dataset):
         image = np.load(image_path)[110:265, 140:265,10:]
         mask = np.load(mask_path)[110:265, 140:265,10:]
 
-        #without re-size
-        # image = VtkReader(image_path)[103:223, 110:230, 10:59]
-        # mask = VtkReader(mask_path)[103:223, 110:230, 10:59]
+        #without re-size old dataset
+        #image = VtkReader(image_path)[103:223, 110:230, 10:59]
+        #mask = VtkReader(mask_path)[103:223, 110:230, 10:59]
 
 
         # compute a value between 0 and 1 to
@@ -178,29 +174,29 @@ class BalancedPatchGenerator(Dataset):
 
 
 
-if __name__ == "__main__":
-
-
-    path = "C:/Users/Roger/Desktop/JANA/tfm/Dataset_arrays"
-
-
-    ddd = BalancedPatchGenerator(path,
-                                 (32, 32, 32),
-                                 positive_prob=0.7,
-                                 shuffle_images=True,
-                                 mode='val',
-                                 transform=None)
-
-
-    loader = DataLoader(ddd, batch_size=1, shuffle=False)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    for i, data in enumerate(loader):
-        x, y_true = data
-        x.to(device)
-        y_true.to(device)
-        # print(x.shape)
-        # print(y_true.shape)
+# if __name__ == "__main__":
+#
+#
+#     path = "C:/Users/Roger/Desktop/JANA/tfm/patients_data"
+#
+#
+#     ddd = BalancedPatchGenerator(path,
+#                                  (60, 60, 32),
+#                                  positive_prob=0.7,
+#                                  shuffle_images=True,
+#                                  mode='test',
+#                                  transform=None)
+#
+#
+#     loader = DataLoader(ddd, batch_size=1, shuffle=False)
+#
+#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#     for i, data in enumerate(loader):
+#         x, y_true = data
+#         x.to(device)
+#         y_true.to(device)
+#         print(x.shape)
+#         print(y_true.shape)
         # plt.figure("check", (18, 6))
         # plt.subplot(1, 2, 1)
         # plt.title(f"Image {i}")
