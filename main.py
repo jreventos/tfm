@@ -11,6 +11,7 @@ from vtk.util.numpy_support import *
 from monai.losses import DiceLoss, GeneralizedDiceLoss
 
 import optuna
+from optuna.pruners import BasePruner
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -23,7 +24,7 @@ parser = argparse.ArgumentParser()
 # Data loader parameters
 parser.add_argument("--path", type=str, default='dataset_patients',
                     help="Path to the training and val data")
-parser.add_argument("--patch_dim", type=list, default=[60, 60, 32], help="Patches dimensions")
+parser.add_argument("--patch_dim", type=list, default=[90, 90, 32], help="Patches dimensions")
 parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
 parser.add_argument("--transforms", type=bool, default=True, help="transforms")
 parser.add_argument("--large",type=bool, default=False, help="True: large dataset_patients, False: small dataset_patients")
@@ -36,7 +37,7 @@ parser.add_argument("--group_norm",type=int,default=8, help='number of group nor
 
 
 # Training parameters
-parser.add_argument("--epoch", type=int, default=500, help="Number of epochs")
+parser.add_argument("--epoch", type=int, default=250, help="Number of epochs")
 parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
 parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
 parser.add_argument("--verbose", type=int, default=10, help="Verbose, when we want to do a print")
@@ -54,11 +55,12 @@ def suggest_hyperparameters(trial):
     # Learning rate on a logarithmic scale
     #lr = trial.suggest_float("lr", 1e-4,1e-4)
     # Dropout ratio in the range from 0.0 to 0.9 with step size 0.1
-    #positive_probability = trial.suggest_float("positive_probability", 0.6, 0.7,step=0.1)
+    positive_probability = trial.suggest_float("positive_probability", 0.3, 0.8,step=0.1)
     # Optimizer to use as categorical value
-    patch_dim = trial.suggest_float("patch_dimensions",30,60,step=30)
+    #patch_dim = trial.suggest_float("patch_dimensions",30,60,step=30)
 
-    return patch_dim
+
+    return round(positive_probability,1)
 
 def objective(trial):
 
@@ -66,13 +68,13 @@ def objective(trial):
     with mlflow.start_run():
 
         # Get hyperparameter suggestions created by Optuna and log them as params using mlflow
-        patch_dim = suggest_hyperparameters(trial)
-        positive_probability = 0.7
+        positive_probability = suggest_hyperparameters(trial)
 
-        patch_dimensions = [int(patch_dim),int(patch_dim),32]
+
+        print(positive_probability)
 
         model_name = '_'.join(
-            ['Small', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(patch_dimensions), 'posprob',
+            ['Small', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
              str(positive_probability), 'normalize', str(opt.transforms), 'lr', str(opt.lr),
              'GDL', str(opt.group_norm), 'GD', str(opt.region_loss), 'BL', str(opt.contour_loss) ])
 
@@ -86,7 +88,7 @@ def objective(trial):
         mlflow.log_param("Model_name", opt_model.model_name)
         mlflow.log_param("Num_epochs", opt.epoch)
         mlflow.log_param("Batch", opt.batch)
-        mlflow.log_param("Patch_dim", patch_dimensions)
+        mlflow.log_param("Patch_dim", opt.patch_dim)
         mlflow.log_param("Positive_probability", positive_probability)
         mlflow.log_param("lr", opt.lr)
         mlflow.log_param('Group Norm', opt.group_norm)
@@ -114,7 +116,7 @@ def objective(trial):
         optimizer = torch.optim.Adam(net.parameters(), lr=opt.lr)
 
         data_train = BalancedPatchGenerator(opt.path,
-                                            patch_dimensions,
+                                            opt.patch_dim,
                                             positive_prob=positive_probability,
                                             shuffle_images=True,
                                             mode='train',
@@ -138,6 +140,23 @@ def objective(trial):
 
         return best_val_loss
 
+class RepeatPruner(BasePruner):
+    def prune(self, study, trial):
+        # type: (Study, FrozenTrial) -> bool
+
+        trials = study.get_trials(deepcopy=False)
+        completed_trials = [t.params for t in trials if t.state == TrialState.COMPLETE]
+        n_trials = len(completed_trials)
+
+        if n_trials == 0:
+            return False
+
+        if trial.params in completed_trials:
+            return True
+
+        return False
+
+
 def main():
 
     if opt.is_load:
@@ -145,8 +164,8 @@ def main():
     else:
 
         # Create the optuna study which shares the experiment name
-        study = optuna.create_study(study_name="pytorch-mlflow-optuna", direction="minimize")
-        study.optimize(objective, n_trials=1)
+        study = optuna.create_study(study_name="pytorch-mlflow-optuna", direction="minimize",pruner=RepeatPruner())
+        study.optimize(objective, n_trials=6)
 
         # Print optuna study statistics
         print("\n++++++++++++++++++++++++++++++++++\n")
