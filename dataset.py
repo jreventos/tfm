@@ -22,7 +22,7 @@ class BalancedPatchGenerator(Dataset):
     FINAL DATASET CLASS
     """
     def __init__(self, path, patch_shape, positive_prob=0.7, shuffle_images=False, mode=None,
-                 transform=None):
+                 transform=None, large=True):
 
         self.path = path
         self.patch_shape = patch_shape
@@ -30,9 +30,10 @@ class BalancedPatchGenerator(Dataset):
         self.shuffle_images = shuffle_images
         self.mode = mode
         assert self.mode in ['train', 'val','test']
-        self.images_files = self.get_files(self.path, self.mode, 'MRI_volumes')
-        self.masks_files = self.get_files(self.path, self.mode, 'masks')
+        self.images_files = self.get_files(self.path, self.mode, 'MRI_volumes',large)
+        self.masks_files = self.get_files(self.path, self.mode, 'masks',large)
         self.transform = transform
+        self.large = large
 
         if self.shuffle_images:
             self.images_files = np.random.permutation(self.images_files)
@@ -48,9 +49,18 @@ class BalancedPatchGenerator(Dataset):
         #self.height, self.width, self.depth = overall_mask_boundaries(os.path.join(os.path.join(self.path, 'masks'), self.mode))
 
     @staticmethod
-    def get_files(path, mode, type_files):
-        return [os.path.join(os.path.join(os.path.join(path, type_files), mode), file) for file in
-                os.listdir(os.path.join(os.path.join(path, type_files), mode)) if file.split('.')[-1] == 'npy']
+    def get_files(path, mode, type_files,large):
+        large_dataset = [os.path.join(os.path.join(os.path.join(path, type_files), mode), file) for file in
+                    os.listdir(os.path.join(os.path.join(path, type_files), mode)) if file.split('.')[-1] == 'npy']
+
+        small_dataset = [file for file in large_dataset if 'ge' not in file]
+
+        if large:
+            return large_dataset
+        else:
+            return small_dataset
+
+
     # ATENCIO PER LLEGIR VTK POSAR 'VTK' AL == DE LA LINIA SUPERIOR
 
     #    @staticmethod
@@ -128,14 +138,14 @@ class BalancedPatchGenerator(Dataset):
         # image = image_resized[110:250, 110:250,10:]
         # mask = mask_resized[110:250, 110:250, 10:]
 
-        #Values computed with the new dataset([119, 260], [148, 260], [13, 59])
+        #Values computed with the new dataset_patients([119, 260], [148, 260], [13, 59])
         #image = image_resized[110:265, 140:265,10:]
         #mask = mask_resized[110:265, 140:265, 10:]
 
         image = np.load(image_path)[110:265, 140:265,10:]
         mask = np.load(mask_path)[110:265, 140:265,10:]
 
-        #without re-size old dataset
+        #without re-size old dataset_patients
         #image = VtkReader(image_path)[103:223, 110:230, 10:59]
         #mask = VtkReader(mask_path)[103:223, 110:230, 10:59]
 
@@ -154,10 +164,10 @@ class BalancedPatchGenerator(Dataset):
 
         # in case of transform (just for the train mode)
         if self.transform is not None:
-            im_patch = (1/468.0883)*(im_patch.astype(np.float32) - 158.37267)
-
-            # Small dataset - mean =21.201036 , sd=40.294086
-            # Big dataset - mean = 158.37267, sd=468.0883
+            if self.large:
+                im_patch = (1/468.0883)*(im_patch.astype(np.float32) - 158.37267)
+            else:
+                im_patch = (1 / 40.294086) * (im_patch.astype(np.float32) - 21.201036)
 
 
         # expand dimensions

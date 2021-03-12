@@ -1,4 +1,6 @@
 
+
+
 import torch
 from torch import Tensor, einsum
 from torch.utils.data import Dataset, DataLoader
@@ -8,7 +10,31 @@ import numpy as np
 from scipy.ndimage import distance_transform_edt as eucl_distance
 from typing import Any, Callable, Iterable, List, Set, Tuple, TypeVar, Union, cast
 
-from dataset_patients import BalancedPatchGenerator
+from dataset import BalancedPatchGenerator
+
+
+class average_metrics(object):
+    """
+    Average metrics class, use the update to add the current metric and self.avg to get the avg of the metric
+    """
+
+    def __init__(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 
 
 # Assert utils
@@ -29,7 +55,6 @@ def one_hot(t: Tensor, axis=1) -> bool:
     return simplex(t, axis) and sset(t, [0, 1])
 
 
-
 def one_hot2dist(seg: np.ndarray, resolution: Tuple[float, float, float] = None,
                  dtype=None) -> np.ndarray:
     #assert one_hot(torch.tensor(seg), axis=0)
@@ -47,18 +72,6 @@ def one_hot2dist(seg: np.ndarray, resolution: Tuple[float, float, float] = None,
         # since this is one-hot encoded, another class will supervise that pixel
 
     return res
-
-
-# path = "dataset_patients"
-#
-# ddd = BalancedPatchGenerator(path,
-#                              (60, 60, 32),
-#                              positive_prob=0.7,
-#                              shuffle_images=True,
-#                              mode='train',
-#                              transform=None)
-#
-# loader = DataLoader(ddd, batch_size=1, shuffle=False)
 
 
 class BoundaryLoss():
