@@ -1,5 +1,5 @@
 artifact_uri: file:///C:/Users/Roger/Desktop/JANA/tfm/mlruns/1/27152edcaf8e4490b229e007624fbf2d/artifacts
-end_time: null
+end_time: 1615589501991
 entry_point_name: ''
 experiment_id: '1'
 lifecycle_stage: active
@@ -10,6 +10,6 @@ source_name: ''
 source_type: 4
 source_version: ''
 start_time: 1615566222686
-status: 1
+status: 3
 tags: []
 user_id: Roger
