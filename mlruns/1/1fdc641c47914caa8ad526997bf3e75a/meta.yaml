@@ -2,7 +2,7 @@ artifact_uri: file:///C:/Users/Roger/Desktop/JANA/tfm/mlruns/1/1fdc641c47914caa8
 end_time: null
 entry_point_name: ''
 experiment_id: '1'
-lifecycle_stage: active
+lifecycle_stage: deleted
 name: ''
 run_id: 1fdc641c47914caa8ad526997bf3e75a
 run_uuid: 1fdc641c47914caa8ad526997bf3e75a
