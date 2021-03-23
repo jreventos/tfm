@@ -1,89 +1,30 @@
 
-from torch.utils.data import DataLoader
-from tensorboardX import SummaryWriter
-from torchvision import transforms
-from torch import optim
-import torch
-import argparse
-import time
-import os
-from tfm.model import  metrics
-from tfm.model.Unet import *
-from tfm.dataset import*
-from tfm.utils.patches import *
-import matplotlib.pyplot as plt
 
-from tfm.preprocessing import custom_normalize
-
-
+import math
+from model.Unet3D import *
+from model.Unet import UNet
+from utils.readers import *
+from torch.nn.functional import softmax
+import mlflow.pytorch
+from vtk.util.numpy_support import *
 from monai.losses import DiceLoss, GeneralizedDiceLoss
-# Parser
-parser = argparse.ArgumentParser()
-# Set seed
-#parser.add_argument("--seed", type=int, default=42, help="Seed")
-
-# Data loader parameters
-parser.add_argument("--path", type=str, default='/Users/jreventos/Desktop/TFM/tfm/patients_data2', help="Path to the training and val data")
-parser.add_argument("--mean", type=list, default=21.201036, help="Mean of the data set MRI volumes")
-parser.add_argument("--sd", type=list, default= 40.294086, help="Standard deviation of the data set MRI volumes")
-parser.add_argument("--patch_dim", type=list, default=[60,60,32], help="Patches dimensions")
-parser.add_argument("--stepsize", type=int, default=64, help="patches overlap stepsize")
+from monai.metrics import compute_meandice, compute_hausdorff_distance
+from monai.transforms import AsDiscrete
+from main import opt
+from dataset import *
+from utils.average_metrics import *
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
-# Model parameters
-parser.add_argument("--is_load", type=bool, default= False, help="weights initialization")
-parser.add_argument("--load_path", type=str, default= '', help="path to the weights net initialization")
-parser.add_argument("--lr", type=int, default= 0.0001, help="learning rate")
 
-
-
-# In case of transfer models
-#parser.add_argument("--feature_extract", type=bool, default=False, help="If true do features extraction, otherwise finetuning")
-#parser.add_argument("--fully_connected", type=str, default=1, help="Type of fully connected after convolution")
-#parser.add_argument("--fine_tuning_prop", type=str, default='complete', help='Proportion of the net unfreezed')
-
-# Training parameters
-parser.add_argument("--epoch", type=int, default=1, help="Number of epochs")
-parser.add_argument("--epoch_init", type=int, default=0, help="Number of epochs where we want to initialize")
-parser.add_argument("--batch", type=int, default=1, help="Number of examples in batch")
-parser.add_argument("--verbose", type=int, default=1, help="Verbose, when we want to do a print")
-
-parser.add_argument("--early_stopping", type=int, default=5, help="Number of epochs without improvement to stop")
-parser.add_argument("--save_models", type=bool, default=False, help='If true models will be saved')
-
-opt = parser.parse_args()
-
-# Define model name
-model_name = '_Unet'.join(['epoch_',str(opt.epoch),'batch_', str(opt.batch)])
-
-class average_metrics(object):
-    """
-    Average metrics class, use the update to add the current metric and self.avg to get the avg of the metric
-    """
-    def __init__(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-
-def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
-
+def train_epoch(data_loader, model, alpha, criterion1, criterion2, optimizer=None, mode_train=True):
     total_batch = len(data_loader)
     batch_loss = average_metrics()
+    batch_dice = average_metrics()
+    batch_hausdorff = average_metrics()
+    post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=2)
+    post_label = AsDiscrete(to_onehot=True, n_classes=2)
 
     if mode_train:
         model.train()
@@ -92,6 +33,7 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
     for batch_idx, (data, y) in enumerate(data_loader):
         data = data.to(device)
+        data = data.type(torch.cuda.FloatTensor)
         y = y.to(device)
 
         # Reset gradients
@@ -99,19 +41,58 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
             optimizer.zero_grad()
 
         # Get prediction
+        out = model(data.to(device))
 
-        out = model(data)
-        #print(out)
-        #print(out.shape)
 
-        # Get loss
-        loss = criterion(out, y)
+        # Evaluation
+        outputs = post_pred(out.to(device))
+        labels = post_label(y.to(device))
+        dice_val = compute_meandice(y_pred=outputs, y=labels, include_background=False)
+        hausdorff_val = compute_hausdorff_distance(y_pred=outputs,y=labels,distance_metric='euclidean')
 
-        # Backpropagate error
-        loss.backward()
+        if math.isnan(dice_val.item()) or math.isnan(hausdorff_val.item()):
+            pass
+        else:
+            batch_dice.update(dice_val.item())
+            batch_hausdorff.update(hausdorff_val.item())
 
-        # Update loss
-        batch_loss.update(loss.item())
+
+        # Losses
+        if criterion1 and criterion2 == None:
+            # Get REGION loss
+            region_loss = criterion1(out.to(device), y.to(device))
+
+            # Backpropagate error
+            region_loss.backward()
+            # Update loss
+            batch_loss.update(region_loss.item())
+
+        elif criterion1 == None and criterion2:
+
+            # Get CONTOUR loss
+            out_probs = softmax(out.to(device), dim=1)
+            contour_loss = criterion2(out_probs.to(device), dy.to(device))
+
+            # Backpropagate error
+            contour_loss.backward()
+            # Update loss
+            batch_loss.update(contour_loss.item())
+
+        else:
+            # Get REGION loss
+
+            region_loss = criterion1(out.to(device), y.to(device))
+
+            # Get CONTOUR loss
+            out_probs = softmax(out.to(device), dim=1)
+            contour_loss = criterion2(out_probs.to(device), y.to(device))
+            # Combination both losses
+            loss = region_loss + alpha*contour_loss
+            # Backpropagate error
+            loss.backward()
+            # Update loss
+            # Update loss
+            batch_loss.update(loss.item())
 
         # Optimize
         if mode_train:
@@ -119,131 +100,94 @@ def train_epoch(data_loader, model, criterion, optimizer=None, mode_train=True):
 
         # Log
         if (batch_idx + 1) % opt.verbose == 0 and mode_train:
-            print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {batch_loss.val} ')
+            if criterion1 and criterion2 == None:
+                print(f'Iteration {(batch_idx + 1)}/{total_batch} - GD Loss: {batch_loss.val} - Dice: {batch_dice.val} - Hausdorff:{batch_hausdorff.val}')
+            elif criterion1 == None and criterion2:
+                print(f'Iteration {(batch_idx + 1)}/{total_batch} - B Loss: {batch_loss.val} - Dice: {batch_dice.val} -  Hausdorff:{batch_hausdorff.val}')
+            else:
+                print(f'Iteration {(batch_idx + 1)}/{total_batch} - GD & B Loss: {batch_loss.val} - Dice: {batch_dice.val} - Hausdorff:{batch_hausdorff.val}')
 
-        if mode_train == False:
-
-            # plot the slice [:, :, 30]
-            plt.figure("check", (18, 6))
-            plt.subplot(1, 3, 1)
-            plt.title(f"image {batch_idx}")
-            plt.imshow(data[0, 0, :, :, 31], cmap="gray")
-            plt.subplot(1, 3, 2)
-            plt.title(f"label {batch_idx}")
-            plt.imshow(y[0, 0, :, :, 31])
-            plt.subplot(1, 3, 3)
-            plt.title(f"output {batch_idx}")
-            plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, 15])
-            plt.show()
-
-    return batch_loss.avg
+    return batch_loss.avg, batch_dice.avg, batch_hausdorff.avg
 
 
-def write(writer, epoch, loss):
-    it = opt.epoch_init + epoch
-    writer.add_scalar('Loss', loss, it)
+
+def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alpha, optimizer, early_true,model_name):
+
+    average_train_loss, average_val_loss  = average_metrics(), average_metrics()
+    average_train_dice, average_val_dice  = average_metrics(), average_metrics()
+    average_train_hausdorff, average_val_hausdorff = average_metrics(), average_metrics()
 
 
-def train(data_loader_train, data_loader_val, model, criterion, optimizer):
-    # Writer
-    writer_train = SummaryWriter('runs/' + model_name + '_train')
-    writer_val = SummaryWriter('runs/' + model_name + '_val')
+    best_val_loss, best_val_dice, best_val_hausdorff = None, None, None
 
-    best_val_loss = None
     counter = 0
+    #alphas = np.logspace(-1, -0.6, opt.epoch)
     for epoch in range(opt.epoch):
         print("----------")
-        print(f'Epoch: {epoch +1}/{opt.epoch}')
+        print(f'Epoch: {epoch + 1}/{opt.epoch}')
 
         # Train
-        loss_train = train_epoch(data_loader_train, model, criterion, optimizer, mode_train=True)
-        print(f'Training - Loss: {loss_train} ')
-        write(writer_train, epoch, loss_train)
+        #alpha = alphas[epoch]
+        loss_train, dice_train, hausdorff_train = train_epoch(data_loader_train, model, alpha, criterion1, criterion2, optimizer, mode_train=True)
+
+        print(f'Training - Loss: {loss_train} - Dice: {dice_train} - Hausdorff: {hausdorff_train}')
+        mlflow.log_metric("Train_loss_evolution", loss_train, step=epoch)
+        mlflow.log_metric("Train_dice_evolution", dice_train, step=epoch)
+        mlflow.log_metric("Train_hausdorff_evolution", hausdorff_train, step=epoch)
+
+        average_train_loss.update(loss_train)
+        average_train_dice.update(dice_train)
+        average_train_hausdorff.update(hausdorff_train)
+
+        mlflow.log_metric("Average_train_loss", average_train_loss.avg, step=epoch)
+        mlflow.log_metric("Average_train_dice", average_train_dice.avg, step=epoch)
+        mlflow.log_metric("Average_train_dice", average_train_dice.avg, step=epoch)
 
         # Validation
-        loss_val = train_epoch(data_loader_val, model, criterion, mode_train=False)
-        print(f'Validation - Loss: {loss_val}\n')
-        write(writer_val, epoch, loss_val)
+        loss_val, dice_val, hausdorff_val = train_epoch(data_loader_val, model, alpha, criterion1,criterion2, mode_train=False)
+        print(f'Validation - Loss: {loss_val} - Dice: {dice_val} - Hausdorff: {hausdorff_val} \n')
+
+        # Save validation in mlflow
+        mlflow.log_metric("Val_loss_evolution", loss_val, step=epoch)
+        mlflow.log_metric("Val_dice_evolution", dice_val, step=epoch)
+        mlflow.log_metric("Val_hausdorff_evolution", hausdorff_val, step=epoch)
+
+        average_val_loss.update(loss_val)
+        average_val_dice.update(dice_val)
+        average_val_hausdorff.update(hausdorff_val)
+
+        mlflow.log_metric("Average_val_loss", average_val_loss.avg, step=epoch)
+        mlflow.log_metric("Average_val_dice", average_val_dice.avg, step=epoch)
+        mlflow.log_metric("Average_val_hausdorff", average_val_hausdorff.avg, step=epoch)
+
+
 
         # Early stopping
+        #if early_true:
         if best_val_loss is None or best_val_loss > loss_val:
             best_val_loss = loss_val
-            counter = 0
-            # Save Unet
-            if opt.save_models:
-                torch.save(model, 'models_checkpoints/{}/best_model.pth'.format(model_name))
-                print('New best Unet: epoch {}'.format(epoch))
-        else:
-            counter += 1
-            if counter > opt.early_stopping:
-                break
+        #    counter = 0
+        #else:
+        #    counter += 1
+            #if counter > opt.early_stopping:
+             #   break
 
-    # Close writer
-    writer_train.close()
-    writer_val.close()
+        if best_val_dice is None or best_val_dice < dice_val:
+            best_val_dice = dice_val
 
+        if best_val_hausdorff is None or best_val_hausdorff < hausdorff_val:
+            best_val_hausdorff = hausdorff_val
 
-def main():
-
-
-    # Load Unet
-    net = UNet()
-    net = net.to(device)
-
-    # load the init weight
-    if opt.is_load:
-        net.load_state_dict(torch.load(opt.load_path))
-
-    # Transform:
-    transform  = transforms.Compose(
-        [transforms.Lambda(lambda x: custom_normalize(x,opt.mean,opt.sd))])
-
-    # Train data
-    data_train = PatchesDataset_2(opt.path,
-                                 transform=transform,
-                                 patch_dim=opt.patch_dim,
-                                 num_patches = 2,
-                                 mode='train',
-                                 random_sampling=True)
-
-    data_loader_train = DataLoader(data_train, batch_size=opt.batch,num_workers=4)
-
-    # Validation data
-    data_val =  PatchesDataset_2(opt.path,
-                                 transform=None,
-                                 patch_dim=opt.patch_dim,
-                                 num_patches=1,
-                                 mode='val',
-                                 random_sampling=True)
+        mlflow.log_metric('Best_val_loss', best_val_loss, step=epoch)
+        mlflow.log_metric('Best_val_dice', best_val_dice, step=epoch)
+        mlflow.log_metric('Best_val_hausdorff', best_val_hausdorff, step=epoch)
 
 
-    data_loader_val = DataLoader(data_val, batch_size=1, num_workers=4)
+        # Save Unet
+        if opt.save_models and (epoch + 1) % opt.verbose == 0:
+            torch.save(model.state_dict(), 'models_checkpoints_finals/{}/checkpoint_{}.pth'.format(model_name,epoch+1))
 
-    # Loss function
-    #loss = metrics.GeneralizedDiceLoss()
-    criterion = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
-
-    # Optimizer
-    optimizer = optim.Adam(net.parameters(), lr=opt.lr)
-
-    # Train
-    train(data_loader_train, data_loader_val, net, criterion, optimizer)
+    return best_val_loss
 
 
-def create_dir():
-    if not os.path.exists('models_checkpoints'):
-        os.makedirs('models_checkpoints')
-    if not os.path.exists(os.path.join('models_checkpoints', model_name)):
-        os.makedirs(os.path.join('models_checkpoints', model_name))
-
-
-if __name__ == '__main__':
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    start = time.time()
-    create_dir()
-    main()
-    end = time.time()
-    print('Total training time:', end - start)
-
-    # Show example results
 
