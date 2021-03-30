@@ -1,15 +1,14 @@
 
-from train2 import *
+from train import *
+from inference import *
 from dataset import *
 from model import Unet3D
 import mlflow.pytorch
 import argparse
 from model.Unet3D import *
-
-from utils.losses_metrics import *
 from vtk.util.numpy_support import *
 from monai.losses import DiceLoss, GeneralizedDiceLoss
-
+from losses import *
 import optuna
 from optuna.pruners import BasePruner
 
@@ -24,14 +23,14 @@ parser = argparse.ArgumentParser()
 # Data loader parameters
 parser.add_argument("--path", type=str, default='dataset_patients',
                     help="Path to the training and val data")
-parser.add_argument("--patch_dim", type=list, default=[90, 90, 32], help="Patches dimensions")
-parser.add_argument("--positive_probability", type=int, default=0.7, help="% of positive probability")
+parser.add_argument("--patch_dim", type=list, default=[60, 60, 32], help="Patches dimensions")
+parser.add_argument("--positive_probability", type=int, default=0.4, help="% of positive probability")
 parser.add_argument("--transforms", type=bool, default=True, help="transforms")
 parser.add_argument("--large",type=bool, default=False, help="True: large dataset_patients, False: small dataset_patients")
 
 # Model parameters
-parser.add_argument("--is_load", type=bool, default=False, help="weights initialization")
-parser.add_argument("--load_path", type=str, default='models_checkpoints/ExtendedDataset_Unet3D_epoch_500_batch_1_patchdim_[60, 60, 32]_posprob_0.7_normalize_True_lr_0.0001_optim_Adam_GN_8/checkpoint_500.pth', help="path to the weights net initialization")
+parser.add_argument("--is_load", type=bool, default=False,help="weights initialization")
+parser.add_argument("--load_path", type=str, default='models_checkpoints_finals/Small_epoch_500_batch_1_patchdim_[90, 90, 32]_posprob_0.9_normalize_True_lr_0.0001_GDL_8_GD_True_BL_False/checkpoint_250.pth', help="path to the weights net initialization")
 parser.add_argument("--lr", type=int, default=0.0001, help="learning rate")
 parser.add_argument("--group_norm",type=int,default=8, help='number of group normalizations')
 
@@ -55,12 +54,12 @@ def suggest_hyperparameters(trial):
     # Learning rate on a logarithmic scale
     #lr = trial.suggest_float("lr", 1e-4,1e-4)
     # Dropout ratio in the range from 0.0 to 0.9 with step size 0.1
-    positive_probability = trial.suggest_float("positive_probability", 0.3, 0.8,step=0.1)
+    #gn = trial.suggest_float("positive_probability", 2, 6,step=2)
     # Optimizer to use as categorical value
-    #patch_dim = trial.suggest_float("patch_dimensions",30,60,step=30)
+    dim = trial.suggest_float("patch_dimensions",90,120,step=30)
 
 
-    return round(positive_probability,1)
+    return int(dim)
 
 def objective(trial):
 
@@ -68,14 +67,12 @@ def objective(trial):
     with mlflow.start_run():
 
         # Get hyperparameter suggestions created by Optuna and log them as params using mlflow
-        positive_probability = suggest_hyperparameters(trial)
-
-
-        print(positive_probability)
+        dim = suggest_hyperparameters(trial)
+        patch_dim = [90,90,32]
 
         model_name = '_'.join(
-            ['Small', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(opt.patch_dim), 'posprob',
-             str(positive_probability), 'normalize', str(opt.transforms), 'lr', str(opt.lr),
+            ['Large_increased_alpha', 'epoch', str(opt.epoch), 'batch', str(opt.batch), 'patchdim', str(patch_dim), 'posprob',
+             str(opt.positive_probability), 'normalize', str(opt.transforms), 'lr', str(opt.lr),
              'GDL', str(opt.group_norm), 'GD', str(opt.region_loss), 'BL', str(opt.contour_loss) ])
 
         parser_model = argparse.ArgumentParser()
@@ -88,16 +85,17 @@ def objective(trial):
         mlflow.log_param("Model_name", opt_model.model_name)
         mlflow.log_param("Num_epochs", opt.epoch)
         mlflow.log_param("Batch", opt.batch)
-        mlflow.log_param("Patch_dim", opt.patch_dim)
-        mlflow.log_param("Positive_probability", positive_probability)
+        mlflow.log_param("Patch_dim", patch_dim)
+        mlflow.log_param("Positive_probability", opt.positive_probability)
         mlflow.log_param("lr", opt.lr)
         mlflow.log_param('Group Norm', opt.group_norm)
         mlflow.log_param("device", device)
         mlflow.log_param("large",opt.large)
+        mlflow.log_param('alpha','increase')
 
 
         # net = UNet()
-        net = UNet3D(in_channels=1, out_channels=2)
+        net = UNet3D(in_channels=1, out_channels=2,num_groups=opt.group_norm)
         net.to(device)
         #mlflow.pytorch.save_model(net, 'Unet')
 
@@ -110,14 +108,14 @@ def objective(trial):
             criterion1 = GeneralizedDiceLoss(to_onehot_y=True, softmax=True)
 
         if opt.contour_loss:
-            criterion2 = BoundaryLoss(idc=[0])
+            criterion2 = BoundaryLoss(idc=[1])
 
         # Optimizer
         optimizer = torch.optim.Adam(net.parameters(), lr=opt.lr)
 
         data_train = BalancedPatchGenerator(opt.path,
-                                            opt.patch_dim,
-                                            positive_prob=positive_probability,
+                                            patch_dim,
+                                            positive_prob=opt.positive_probability,
                                             shuffle_images=True,
                                             mode='train',
                                             transform=opt.transforms,large=opt.large)
@@ -129,32 +127,17 @@ def objective(trial):
         # Validation data
         data_val = BalancedPatchGenerator(opt.path,
                                           None,
-                                          positive_prob=positive_probability,
+                                          positive_prob=opt.positive_probability,
                                           shuffle_images=False,
                                           mode='val',
                                           transform=None, large= opt.large)
 
-        data_loader_val = DataLoader(data_val, batch_size=opt.batch, num_workers=4)
+        data_loader_val = DataLoader(data_val, batch_size=opt.batch, num_workers=1)
 
-        best_val_loss = train(data_loader_train, data_loader_val, net, criterion1,criterion2, optimizer, opt.early_true,opt_model.model_name)
+        best_val_loss = train(data_loader_train, data_loader_val, net, criterion1,criterion2,None, optimizer, opt.early_true,opt_model.model_name)
 
         return best_val_loss
 
-class RepeatPruner(BasePruner):
-    def prune(self, study, trial):
-        # type: (Study, FrozenTrial) -> bool
-
-        trials = study.get_trials(deepcopy=False)
-        completed_trials = [t.params for t in trials if t.state == TrialState.COMPLETE]
-        n_trials = len(completed_trials)
-
-        if n_trials == 0:
-            return False
-
-        if trial.params in completed_trials:
-            return True
-
-        return False
 
 
 def main():
@@ -164,8 +147,8 @@ def main():
     else:
 
         # Create the optuna study which shares the experiment name
-        study = optuna.create_study(study_name="pytorch-mlflow-optuna", direction="minimize",pruner=RepeatPruner())
-        study.optimize(objective, n_trials=6)
+        study = optuna.create_study(study_name="pytorch-mlflow-optuna", direction="minimize")
+        study.optimize(objective, n_trials=1)
 
         # Print optuna study statistics
         print("\n++++++++++++++++++++++++++++++++++\n")
@@ -187,10 +170,10 @@ def main():
 
 
 def create_dir(name):
-    if not os.path.exists('models_checkpoints_finals'):
-        os.makedirs('models_checkpoints_finals')
-    if not os.path.exists(os.path.join('models_checkpoints_finals', name)):
-        os.makedirs(os.path.join('models_checkpoints_finals', name))
+    if not os.path.exists('models_checkpoints_finals/'):
+        os.makedirs('models_checkpoints_finals/')
+    if not os.path.exists(os.path.join('models_checkpoints_finals/', name)):
+        os.makedirs(os.path.join('models_checkpoints_finals/', name))
 
 
 if __name__ == '__main__':

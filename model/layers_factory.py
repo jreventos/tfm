@@ -261,7 +261,6 @@ class Upsampling(nn.Module):
     """
     Upsamples a given multi-channel 3D data using interpolation
 
-
         :param mode (string): algorithm used for upsampling the options are the following...
                     'nearest' | 'linear' | 'bilinear' | 'trilinear' | 'area'
 

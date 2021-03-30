@@ -134,5 +134,5 @@ def save_resized_numpy(mypath,outfile):
         vtk_resized = resize_data(vtk_original_size,[360,360,60])
         np.save(outfile+'/'+i[:-4],vtk_resized)
 
-#save_resized_numpy("C:/Users/Roger/Desktop/JANA/tfm/patients_data/masks/train","C:/Users/Roger/Desktop/JANA/tfm/Dataset_arrays/masks/train")
+save_resized_numpy("C:/Users/Roger/Desktop/JANA/tfm/DatasetSiemens2/MRI_volumes","C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/test")
 

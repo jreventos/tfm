@@ -43,7 +43,6 @@ def train_epoch(data_loader, model, alpha, criterion1, criterion2, optimizer=Non
         # Get prediction
         out = model(data.to(device))
 
-
         # Evaluation
         outputs = post_pred(out.to(device))
         labels = post_label(y.to(device))
@@ -80,7 +79,6 @@ def train_epoch(data_loader, model, alpha, criterion1, criterion2, optimizer=Non
 
         else:
             # Get REGION loss
-
             region_loss = criterion1(out.to(device), y.to(device))
 
             # Get CONTOUR loss
@@ -128,7 +126,6 @@ def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alph
 
         # Train
         alpha = alphas[epoch]
-        print(alpha)
         loss_train, dice_train, hausdorff_train = train_epoch(data_loader_train, model, alpha, criterion1, criterion2, optimizer, mode_train=True)
 
         print(f'Training - Loss: {loss_train} - Dice: {dice_train} - Hausdorff: {hausdorff_train}')
@@ -167,7 +164,7 @@ def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alph
         #if early_true:
         if best_val_loss is None or best_val_loss > loss_val:
             best_val_loss = loss_val
-            torch.save(model.state_dict(),'models_checkpoints_finals/increase_alpha/{}/checkpoint_bes_val_loss{}.pth'.format(model_name, epoch + 1))
+            torch.save(model.state_dict(),'models_checkpoints_finals/{}/checkpoint_bes_val_loss{}.pth'.format(model_name, epoch + 1))
         #    counter = 0
         #else:
         #    counter += 1
@@ -176,11 +173,11 @@ def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alph
 
         if best_val_dice is None or best_val_dice < dice_val:
             best_val_dice = dice_val
-            torch.save(model.state_dict(),'models_checkpoints_finals/increase_alpha/{}/checkpoint_bes_val_dice{}.pth'.format(model_name,epoch + 1))
+            torch.save(model.state_dict(),'models_checkpoints_finals/{}/checkpoint_bes_val_dice{}.pth'.format(model_name,epoch + 1))
 
         if best_val_hausdorff is None or best_val_hausdorff > hausdorff_val:
             best_val_hausdorff = hausdorff_val
-            torch.save(model.state_dict(),'models_checkpoints_finals/increase_alpha/{}/checkpoint_bes_val_hausdorff{}.pth'.format(model_name,epoch + 1))
+            torch.save(model.state_dict(),'models_checkpoints_finals/{}/checkpoint_bes_val_hausdorff{}.pth'.format(model_name,epoch + 1))
 
         mlflow.log_metric('Best_val_loss', best_val_loss, step=epoch)
         mlflow.log_metric('Best_val_dice', best_val_dice, step=epoch)
@@ -189,7 +186,7 @@ def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alph
 
         # Save Unet
         if opt.save_models and (epoch + 1) % opt.verbose == 0:
-            torch.save(model.state_dict(), 'models_checkpoints_finals/increase_alpha/{}/checkpoint_{}.pth'.format(model_name,epoch+1))
+            torch.save(model.state_dict(), 'models_checkpoints_finals/{}/checkpoint_{}.pth'.format(model_name,epoch+1))
 
     return best_val_loss
 

@@ -74,7 +74,7 @@ def custom_normalize(array,mean,sd):
 
 
 #mean =21.201036 , sd=40.294086
-# array = np.load('Dataset_arrays/MRI_volumes/train/MRI_2.npy')
+# array = np.load('dataset_patients/MRI_volumes/train/MRI_2.npy')
 # norm_array = custom_normalize(array,mean = 158.37267, sd=468.0883)
 # DisplaySlices(array, int(array.max()))
 # DisplaySlices(norm_array, int(norm_array.max()))
@@ -225,7 +225,7 @@ def resize_volume(vol_array,x_idx = (0,221),y_idx = (131,209),z_idx=(0,56),error
 
 def compute_mean_std(path):
     """
-    Mean and standard deviation of the hole MRI_volumes dataset.
+    Mean and standard deviation of the hole MRI_volumes dataset_patients.
 
     :param path: MRI_volumes volumes path
     :return: mean, std
@@ -257,7 +257,7 @@ def compute_mean_std(path):
     print('Std',std)
     return mean, std
 
-#compute_mean_std("C:/Users/Roger/Desktop/JANA/tfm/Dataset_arrays/MRI_volumes/train")
+#compute_mean_std("C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/train")
 
 
 
