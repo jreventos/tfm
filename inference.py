@@ -8,8 +8,17 @@ from dataset import *
 from utils.average_metrics import *
 import pandas as pd
 import time
-
+from sklearn.metrics import mean_absolute_error, accuracy_score
+import numpy as np
+import copy
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from skimage import morphology
+import matplotlib
+from scipy.ndimage import rotate
+import matplotlib.pyplot as plt
+from post_processing import GaussianSmoothing, remove_small_objects
+
+
 
 
 def inference(data_loader, model, criterion,model_name):
@@ -19,9 +28,10 @@ def inference(data_loader, model, criterion,model_name):
     dice, hausdorff, sensitivity, specificity, precision, f1_score, accuracy = average_metrics(), average_metrics(),average_metrics(),average_metrics(),average_metrics(),average_metrics(), average_metrics()
     post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=2)
     post_label = AsDiscrete(to_onehot=True, n_classes=2)
-
+    total_abs_error = average_metrics()
 
     model.eval()
+    dice_collection, hasudorff_collection = [],[]
     results = []
     start2 = time.time()
     for batch_idx, (data, y) in enumerate(data_loader):
@@ -47,8 +57,19 @@ def inference(data_loader, model, criterion,model_name):
         outputs = post_pred(out.to(device))
         labels = post_label(y.to(device))
 
-        dice.update(compute_meandice(y_pred=outputs,  y=labels, include_background=False,).item())
-        hausdorff.update(compute_hausdorff_distance(y_pred=outputs, y=labels, distance_metric='euclidean' ).item())
+
+        # Post-processing
+        # smoothing = GaussianSmoothing(2, 5, 0.5)
+        # out_pad = F.pad(out, (2, 2, 2, 2, 2, 2), mode='replicate')
+        # out_smoothed = smoothing(out_pad.detach().cpu())
+
+        post_processing = remove_small_objects(torch.argmax(out, dim=1).detach().cpu()[0, :, :, :])
+
+
+        dice.update(compute_meandice(y_pred=post_processing.to(device),  y=labels, include_background=False,).item())
+        hausdorff.update(compute_hausdorff_distance(y_pred=post_processing.to(device), y=labels, distance_metric='euclidean' ).item())
+        dice_collection.append(dice.val)
+        hasudorff_collection.append(hausdorff.val)
 
         print(f'Iteration {(batch_idx + 1)}/{total_batch} - Loss: {test_loss.val}  -Dice: {dice.val} - Hausdorff: {hausdorff.val} ')
         end = time.time()
@@ -57,21 +78,32 @@ def inference(data_loader, model, criterion,model_name):
         results.append(result)
 
 
+
         # plot slice
-        slice = out.shape[4]//2
-        plt.figure("check", (18, 6))
-        plt.subplot(1, 3, 1)
-        plt.title(f"image {batch_idx+1}")
-        plt.imshow(data.detach().cpu()[0, 0, :, :, slice], cmap="gray")
-        plt.subplot(1, 3, 2)
-        plt.title(f"label {batch_idx+1}")
-        plt.imshow(y.detach().cpu()[0, 0, :, :, slice])
-        plt.subplot(1, 3, 3)
-        plt.title(f"output {batch_idx+1}")
-        plt.imshow(torch.argmax(out, dim=1).detach().cpu()[0, :, :, slice])
-        plt.show()
-        #print(type(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:]))
-        #print(torch.argmax(out, dim=1).detach().cpu().numpy()[0,:,:,:].shape)
+        print_list = [3,18,22,27]
+        if (batch_idx + 1) in print_list:
+            slice = out.shape[4]//2
+            ground_truth = rotate(y.detach().cpu()[0, 0, :, :, slice], 90)
+            mri_image = rotate(data.detach().cpu()[0, 0, :, :, slice], 90)
+            predicted = rotate(torch.argmax(post_processing, dim=1).detach().cpu()[0, :, :, slice], 90)
+            custom = matplotlib.colors.ListedColormap(['gray', 'red'])
+            plt.figure("check",(10,5))
+            plt.subplot(1,3,1)
+            plt.title(f'MRI test {batch_idx+1}')
+            plt.axis('off')
+            plt.imshow(mri_image, cmap="gray")
+            plt.subplot(1,3,2)
+            plt.axis('off')
+            plt.title('Ground Truth')
+            plt.imshow(mri_image, cmap="gray")
+            plt.imshow(ground_truth, alpha=0.4,cmap=custom)
+            plt.subplot(1,3,3)
+            plt.title(f'DSC:{round(dice.val,3)} - HD:{round(hausdorff.val,2)}')
+            plt.axis('off')
+            plt.imshow(mri_image, cmap="gray")
+            plt.imshow(predicted, alpha=0.4,cmap=custom)
+            plt.show()
+
 
         y_predicted_array = torch.argmax(out, dim=1).detach().cpu().numpy().astype('float')[0,:,:,:]
         y_true_array = y.detach().cpu().numpy()[0, 0, :, :, :]
@@ -85,7 +117,7 @@ def inference(data_loader, model, criterion,model_name):
 
 
 
-    print(f'Test loss:{test_loss.avg} - Dice: {dice.avg} - Hausdorff:{hausdorff.avg}' )
+    print(f'Test loss:{test_loss.avg} - Dice: {dice.avg} +/- {np.std(dice_collection)} - Hausdorff:{hausdorff.avg} +/- {np.std(hasudorff_collection)}' )
     end2 = time.time()
     results.append(['average',test_loss.avg,dice.avg,hausdorff.val,end2-start2])
     results_df = pd.DataFrame(results, columns=["test num", "Loss", "Dice", "Hausdorff",'Time'])
