@@ -11,6 +11,160 @@ import itertools
 import os
 
 
+def data_exploratory_analysis(path):
+
+    splits = ['train','val','test']
+
+    total_mri_directories = []
+    total_mask_directories = []
+
+    for set in splits:
+        path_mri,_,names_mri = next(os.walk(os.path.join(path,os.path.join('MRI_volumes',set))))
+        for mri in names_mri:
+            path_mri_sample = os.path.join(path_mri,mri)
+            total_mri_directories.append(path_mri_sample)
+
+        path_mask, _, names_mask = next(os.walk(os.path.join(path, os.path.join('masks',set))))
+        for mask in names_mask:
+            path_mask_sample = os.path.join(path_mask,mask)
+            total_mask_directories.append(path_mask_sample)
+
+    assert len(total_mask_directories) == len(total_mri_directories)
+
+
+    MRIs = sorted(total_mri_directories, key=lambda x: float(re.findall("(\d+)", x)[0]))
+    MASKS= sorted(total_mask_directories, key=lambda x: float(re.findall("(\d+)", x)[0]))
+
+    SNR_dataset, CR_dataset, HET_dataset = [], [], []
+    total_foreground = 0
+    total_background= 0
+
+    for i in range(len(total_mri_directories)):
+        #mri_array = VtkReader(MRIs[i])
+        #mask_array = VtkReader(MASKS[i])
+
+        mri_array = np.load(MRIs[i])
+        mask_array = np.load(MASKS[i])
+
+        foreground = mri_array[np.where(mask_array == mask_array.max())]
+        total_foreground+=len(foreground)
+        background = mri_array[np.where(mask_array == mask_array.min())]
+        total_background+=len(background)
+
+        mean_LA_pixels = np.mean(foreground)
+        mean_background_pixels = np.mean(background)
+
+        #print('Mean LA: ',mean_LA_pixels, ' Mean background: ',mean_background_pixels)
+
+        std_LA_pixels = np.std(foreground)
+        std_background_pixels = np.std(background)
+
+        #print('Std LA: ',std_LA_pixels, ' Std background: ',std_background_pixels)
+
+        # Signal To Noise Ratio:
+        SNR = abs(mean_LA_pixels-mean_background_pixels)/std_background_pixels
+        SNR_dataset.append(SNR)
+        # Contrast ratio
+        CR = mean_LA_pixels/mean_background_pixels
+        CR_dataset.append(CR)
+        # Heterogeneity
+        HET = std_LA_pixels/abs(mean_LA_pixels-mean_background_pixels)
+        HET_dataset.append(HET)
+
+        from matplotlib import pyplot as plt
+
+        if SNR>=4 and 5<CR<=6:
+            plt.imshow(rotate(mri_array[118:272, 118:272,25],-90),cmap='gray')
+            plt.xticks(color='w')
+            plt.yticks(color='w')
+            plt.ylabel('SNR>4  5<CR<6 HET= '+str(round(HET,1)))
+            plt.show()
+            print('SNR>=4 and 5<CR<=6')
+            print(MRIs[i])
+
+        elif 3<=SNR<4 and 4<CR<=5:
+            plt.imshow(rotate(mri_array[118:272, 118:272,25],-90),cmap='gray')
+            plt.xticks(color='w')
+            plt.yticks(color='w')
+            plt.ylabel('3<SNR<4  4<CR<5 HET= '+str(round(HET,1)))
+            plt.show()
+            print('3<=SNR<4 and 4<CR<=5')
+            print(MRIs[i])
+
+        elif 2<=SNR<3 and 3<CR<=4:
+            plt.imshow(rotate(mri_array[118:272, 118:272,25],-90),cmap='gray')
+            plt.xticks(color='w')
+            plt.yticks(color='w')
+            plt.ylabel('2<SNR<3  3<CR<4 HET= '+str(round(HET,1)))
+            plt.show()
+            print('2<=SNR<3 and 3<CR<=4')
+            print(MRIs[i])
+
+        elif 1<=SNR<2 and 2<CR<=3:
+            plt.imshow(rotate(mri_array[118:272, 118:272,25],-90),cmap='gray')
+            plt.xticks(color='w')
+            plt.yticks(color='w')
+            plt.ylabel('1<SNR<2  2<CR<3 HET= '+str(round(HET,1)))
+            plt.show()
+            print('1<=SNR<2 and 2<CR<=3')
+            print(MRIs[i])
+
+        elif SNR<1 and 1<CR<=2:
+            plt.imshow(rotate(mri_array[118:272, 118:272,25],-90),cmap='gray')
+            plt.xticks(color='w')
+            plt.yticks(color='w')
+            plt.ylabel('SNR<1  1<CR<2 HET= '+str(round(HET,1)))
+            plt.show()
+            print('SNR<1 and 1<CR<=2')
+            print(MRIs[i])
+
+
+        #print('SNR = ', SNR, 'CR = ', CR, 'HET = ', HET)
+
+
+
+    plt.bar(['background (N = '+ str(total_background)+')','foreground (N = '+ str(total_foreground)+')'],[total_background,total_foreground])
+    plt.title('Background/Foreground = '+str(round(total_background/total_foreground,3)))
+    plt.ylabel('# Samples')
+    plt.show()
+
+    SNR_bin_1 = [i for i in SNR_dataset if i<1 ]
+    SNR_bin_2 = [i for i in SNR_dataset if i < 2 and i>= 1]
+    SNR_bin_3 = [i for i in SNR_dataset if i < 3 and i>= 2 ]
+    SNR_bin_4 = [i for i in SNR_dataset if i < 4 and i >= 3]
+    SNR_bin_5 = [i for i in SNR_dataset if i >= 4]
+
+    SNR_bins = [len(SNR_bin_1),len(SNR_bin_2),len(SNR_bin_3),len(SNR_bin_4),len(SNR_bin_5)]
+    bins_names = ['< 1','1-2','2-3','3-4','> 4']
+    plt.bar(bins_names,SNR_bins,color=['red','blue','green','purple','orange'])
+    plt.title('SNR Large ClínicLA Dataset')
+    plt.grid('True')
+    plt.show()
+
+    plt.scatter(SNR_dataset,CR_dataset)
+    plt.xticks(color='w')
+    plt.yticks(color = 'w')
+    plt.xlabel('Signal-Noise Ratio')
+    plt.ylabel('Contrast Ratio')
+    plt.title('Large ClínicLA Dataset')
+    plt.show()
+
+    plt.scatter(SNR_dataset,HET_dataset)
+    plt.xticks(color='w')
+    plt.yticks(color = 'w')
+    plt.xlabel('Signal-Noise Ratio')
+    plt.ylabel('Heterogeneity')
+    plt.title('Large ClínicLA Dataset')
+    plt.show()
+
+    plt.scatter(CR_dataset,HET_dataset)
+    plt.xticks(color='w')
+    plt.yticks(color = 'w')
+    plt.xlabel('Contrast Ratio')
+    plt.ylabel('Heterogeneity')
+    plt.title('Large ClínicLA Dataset')
+    plt.show()
+
 
 def resize_data(data,dimensions):
     initial_size_x = data.shape[0]
@@ -126,7 +280,7 @@ def center_crop(vol, new_width=None, new_height=None):
     return center_cropped_vol
 
 
-def find_mask_boundaries(path):
+def find_mask_boundaries(path,bad_mask):
     """
     Uses the mask of a single MRI_volumes volume to find the boundaries (top and bottom) of the mask in the XYZ axis.
 
@@ -134,28 +288,22 @@ def find_mask_boundaries(path):
     :return: int lists --> [x_bottom_coord,x_top_coord], [y_bottom_coord, y_top_coord], [z_bottom_coord,z_top_coord]
     """
 
-    bad_mask = ["/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/val/mask_1.vtk",
-                "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_3.vtk",
-                "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_51.vtk",
-                "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_74.vtk",
-                "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_75.vtk",
-                "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_80.vtk",
-                "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_38.vtk"] # the 38 has a problem in the mask
-    # Read MRI_volumes volume
     if path in bad_mask:
         return [], [], []
 
     else:
         # print(path)
-        mask_array = VtkReader(path)
-        mask_array= resize_data(mask_array, [360, 360, 60])
+        #mask_array = VtkReader(path)
+        mask_array = np.load(path)
+
+        #mask_array= resize_data(mask_array, [360, 360, 60])
 
         # Find coordinates in the 3 axis
+        max_val = mask_array.max()
+        x_idx = [i for i in range(mask_array.shape[0]) if max_val in mask_array[i, :, :]]
+        y_idx = [i for i in range(mask_array.shape[1]) if max_val in mask_array[:, i, :]]
+        z_idx = [i for i in range(mask_array.shape[-1]) if max_val in mask_array[:,:,i]]
 
-        x_idx = [i for i in range(mask_array.shape[0]) if 1 in mask_array[i, :, :]]
-        y_idx = [i for i in range(mask_array.shape[1]) if 1 in mask_array[:, i, :]]
-        z_idx = [i for i in range(mask_array.shape[-1]) if 1 in mask_array[:,:,i]]
-        #a = 0
         #DisplaySlices(mask_array[(min(x_idx) - a):(max(x_idx) + a), (min(y_idx) - a):(max(y_idx) + a), (min(z_idx) - a):(max(z_idx) + a)], int(mask_array.max()))
 
         return [min(x_idx),max(x_idx)], [min(y_idx),max(y_idx)], [min(z_idx),max(z_idx)]
@@ -169,17 +317,17 @@ def find_mask_boundaries_from_array(mask_array):
     """
 
     # Find coordinates in the 3 axis
-
-    x_idx = [i for i in range(mask_array.shape[0]) if 1 in mask_array[i, :, :]]
-    y_idx = [i for i in range(mask_array.shape[1]) if 1 in mask_array[:, i, :]]
-    z_idx = [i for i in range(mask_array.shape[-1]) if 1 in mask_array[:,:,i]]
+    max_val = mask_array.max()
+    x_idx = [i for i in range(mask_array.shape[0]) if max_val in mask_array[i, :, :]]
+    y_idx = [i for i in range(mask_array.shape[1]) if max_val in mask_array[:, i, :]]
+    z_idx = [i for i in range(mask_array.shape[-1]) if max_val in mask_array[:,:,i]]
     #a = 0
     #DisplaySlices(mask_array[(min(x_idx) - a):(max(x_idx) + a), (min(y_idx) - a):(max(y_idx) + a), (min(z_idx) - a):(max(z_idx) + a)], int(mask_array.max()))
 
     return [min(x_idx),max(x_idx)], [min(y_idx),max(y_idx)], [min(z_idx),max(z_idx)]
 
-#x,y,z = find_mask_boundaries("/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/val/mask_5.vtk")
-#print(x,y,z)
+
+
 
 
 def overall_mask_boundaries(dir_mask):
@@ -202,8 +350,9 @@ def overall_mask_boundaries(dir_mask):
 
     all_x_idx, all_y_idx, all_z_idx = [],[],[]
     for dir in mask_dirs:
-        x_idx, y_idx, z_idx = find_mask_boundaries(dir)
 
+        x_idx, y_idx, z_idx = find_mask_boundaries(dir,bad_mask=[])
+        print(dir,y_idx,z_idx)
         all_x_idx.extend(x_idx)
         all_y_idx.extend(y_idx)
         all_z_idx.extend(z_idx)
@@ -213,6 +362,9 @@ def overall_mask_boundaries(dir_mask):
     all_z_idx = set(all_z_idx)
 
     return [min(all_x_idx), max(all_x_idx)], [min(all_y_idx), max(all_y_idx)], [min(all_z_idx), max(all_z_idx)]
+
+#x,y,z =overall_mask_boundaries("C:/Users/Roger/Desktop/JANA/tfm/LA_segmentation_competition/masks/train/")
+
 
 
 def resize_volume(vol_array,x_idx = (0,221),y_idx = (131,209),z_idx=(0,56),error_percentage= 0.1):
@@ -256,8 +408,6 @@ def compute_mean_std(path):
     print('Mean:',mean)
     print('Std',std)
     return mean, std
-
-#compute_mean_std("C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/train")
 
 
 
