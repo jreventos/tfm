@@ -2,7 +2,7 @@
 
 import math
 from model.Unet3D import *
-from model.Unet import UNet
+from model.simpleUnet import UNet
 from utils.readers import *
 from torch.nn.functional import softmax
 import mlflow.pytorch
@@ -45,7 +45,9 @@ def train_epoch(data_loader, model, alpha, criterion1, criterion2, optimizer=Non
 
         # Evaluation
         outputs = post_pred(out.to(device))
+
         labels = post_label(y.to(device))
+
         dice_val = compute_meandice(y_pred=outputs, y=labels, include_background=False)
         hausdorff_val = compute_hausdorff_distance(y_pred=outputs,y=labels,distance_metric='euclidean')
 
@@ -85,7 +87,7 @@ def train_epoch(data_loader, model, alpha, criterion1, criterion2, optimizer=Non
             out_probs = softmax(out.to(device), dim=1)
             contour_loss = criterion2(out_probs.to(device), y.to(device))
             # Combination both losses
-            loss = (1-alpha)*region_loss + alpha*contour_loss
+            loss = region_loss + alpha*contour_loss
             # Backpropagate error
             loss.backward()
             # Update loss
@@ -126,6 +128,7 @@ def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alph
 
         # Train
         alpha = alphas[epoch]
+        print(alpha)
         loss_train, dice_train, hausdorff_train = train_epoch(data_loader_train, model, alpha, criterion1, criterion2, optimizer, mode_train=True)
 
         print(f'Training - Loss: {loss_train} - Dice: {dice_train} - Hausdorff: {hausdorff_train}')

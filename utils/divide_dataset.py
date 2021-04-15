@@ -134,5 +134,8 @@ def save_resized_numpy(mypath,outfile):
         vtk_resized = resize_data(vtk_original_size,[360,360,60])
         np.save(outfile+'/'+i[:-4],vtk_resized)
 
-save_resized_numpy("C:/Users/Roger/Desktop/JANA/tfm/DatasetSiemens2/MRI_volumes","C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/test")
+#save_resized_numpy("C:/Users/Roger/Desktop/JANA/tfm/DatasetSiemens2/MRI_volumes","C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/test")
 
+vtk_original_size = VtkReader("C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/test/MRI_3.vtk")
+vtk_resized = resize_data(vtk_original_size,[360,360,60])
+np.save("C:/Users/Roger/Desktop/JANA/tfm/dataset_patients/MRI_volumes/test/MRI_3.npy",vtk_resized)

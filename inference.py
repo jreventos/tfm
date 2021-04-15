@@ -64,8 +64,6 @@ def inference(data_loader, model, criterion,model_name):
         # out_smoothed = smoothing(out_pad.detach().cpu())
 
         post_processing = remove_small_objects(torch.argmax(out, dim=1).detach().cpu()[0, :, :, :])
-
-
         dice.update(compute_meandice(y_pred=post_processing.to(device),  y=labels, include_background=False,).item())
         hausdorff.update(compute_hausdorff_distance(y_pred=post_processing.to(device), y=labels, distance_metric='euclidean' ).item())
         dice_collection.append(dice.val)
@@ -80,32 +78,33 @@ def inference(data_loader, model, criterion,model_name):
 
 
         # plot slice
-        print_list = [3,18,22,27]
-        if (batch_idx + 1) in print_list:
-            slice = out.shape[4]//2
-            ground_truth = rotate(y.detach().cpu()[0, 0, :, :, slice], 90)
-            mri_image = rotate(data.detach().cpu()[0, 0, :, :, slice], 90)
-            predicted = rotate(torch.argmax(post_processing, dim=1).detach().cpu()[0, :, :, slice], 90)
-            custom = matplotlib.colors.ListedColormap(['gray', 'red'])
-            plt.figure("check",(10,5))
-            plt.subplot(1,3,1)
-            plt.title(f'MRI test {batch_idx+1}')
-            plt.axis('off')
-            plt.imshow(mri_image, cmap="gray")
-            plt.subplot(1,3,2)
-            plt.axis('off')
-            plt.title('Ground Truth')
-            plt.imshow(mri_image, cmap="gray")
-            plt.imshow(ground_truth, alpha=0.4,cmap=custom)
-            plt.subplot(1,3,3)
-            plt.title(f'DSC:{round(dice.val,3)} - HD:{round(hausdorff.val,2)}')
-            plt.axis('off')
-            plt.imshow(mri_image, cmap="gray")
-            plt.imshow(predicted, alpha=0.4,cmap=custom)
-            plt.show()
+        print_list = [3,14,19,22] # Large
 
 
-        y_predicted_array = torch.argmax(out, dim=1).detach().cpu().numpy().astype('float')[0,:,:,:]
+        slice = out.shape[4]//2
+        ground_truth = rotate(y.detach().cpu()[0, 0, :, :, slice], 90)
+        mri_image = rotate(data.detach().cpu()[0, 0, :, :, slice], 90)
+        predicted = rotate(torch.argmax(post_processing, dim=1).detach().cpu()[0, :, :, slice], 90)
+        custom = matplotlib.colors.ListedColormap(['gray', 'red'])
+        plt.figure("check",(10,5))
+        plt.subplot(1,3,1)
+        plt.title(f'MRI test {batch_idx+1}')
+        plt.axis('off')
+        plt.imshow(mri_image, cmap="gray")
+        plt.subplot(1,3,2)
+        plt.axis('off')
+        plt.title('Ground Truth')
+        plt.imshow(mri_image, cmap="gray")
+        plt.imshow(ground_truth, alpha=0.4,cmap=custom)
+        plt.subplot(1,3,3)
+        plt.title(f'DSC:{round(dice.val,3)} - HD:{round(hausdorff.val,2)}')
+        plt.axis('off')
+        plt.imshow(mri_image, cmap="gray")
+        plt.imshow(predicted, alpha=0.4,cmap=custom)
+        plt.show()
+
+
+        y_predicted_array = torch.argmax(post_processing, dim=1).detach().cpu().numpy().astype('float')[0,:,:,:]
         y_true_array = y.detach().cpu().numpy()[0, 0, :, :, :]
         mri_array = data.detach().cpu().numpy()[0, 0, :, :, :]
 

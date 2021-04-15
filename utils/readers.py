@@ -5,6 +5,9 @@ from vtk.util import numpy_support
 from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 
 
+
+
+
 def BinaryToAscii(PathBinary):
     """
      Conversion of a BINARY vtk format to an ASCII vtk format, it saves the Ascii file into the same path.
@@ -128,10 +131,60 @@ def DicomReader(PathDicom):
     return ArrayDicom
 
 
+def generate_vtk_from_numpy(ndarray,filename):
+    from tvtk.api import tvtk, write_data
+
+    grid = tvtk.ImageData(spacing=(1.25, 1.25, 2.5), origin=(0, 0, 0),
+                          dimensions=ndarray.shape)
+    grid.point_data.scalars = ndarray.ravel(order='F')
+    grid.point_data.scalars.name = 'scalars'
+
+    # Writes legacy ".vtk" format if filename ends with "vtk", otherwise
+    # this will write data using the newer xml-based format.
+    write_data(grid, filename)
+
+
+def vtkImageToNumPy(image, pixelDims):
+    pointData = image.GetPointData()
+    arrayData = pointData.GetArray(0)
+    ArrayDicom = numpy_support.vtk_to_numpy(arrayData)
+    ArrayDicom = ArrayDicom.reshape(pixelDims, order='F')
+
+    return ArrayDicom
 
 
 
 
-
-
-
+# # Read the source file.
+# reader = vtk.vtkStructuredPointsReader()
+# reader.SetFileName("C:/Users/Roger/Desktop/JANA/tfm/patients_data/MRI_volumes/test/MRI_1.vtk")
+# reader.Update()  # Needed because of GetScalarRange
+# output = reader.GetOutput()
+# output_port = reader.GetOutputPort()
+# scalar_range = output.GetScalarRange()
+# print(scalar_range)
+#
+# # Create the mapper that corresponds the objects of the vtk file
+# # into graphics elements
+# mapper = vtk.vtkDataSetMapper()
+# mapper.SetInputConnection(output_port)
+# mapper.SetScalarRange([0,255])
+#
+# # Create the Actor
+# actor = vtk.vtkActor()
+# actor.SetMapper(mapper)
+#
+# # Create the Renderer
+# renderer = vtk.vtkRenderer()
+# renderer.AddActor(actor)
+# renderer.SetBackground(1, 1, 1) # Set background to white
+#
+# # Create the RendererWindow
+# renderer_window = vtk.vtkRenderWindow()
+# renderer_window.AddRenderer(renderer)
+#
+# # Create the RendererWindowInteractor and display the vtk_file
+# interactor = vtk.vtkRenderWindowInteractor()
+# interactor.SetRenderWindow(renderer_window)
+# interactor.Initialize()
+# interactor.Start()

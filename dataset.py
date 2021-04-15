@@ -12,6 +12,7 @@ import random
 import matplotlib.pyplot as plt
 from utils import DataVisualization
 import numpy as np
+import re
 
 
 
@@ -31,7 +32,10 @@ class BalancedPatchGenerator(Dataset):
         self.mode = mode
         assert self.mode in ['train', 'val','test']
         self.images_files = self.get_files(self.path, self.mode, 'MRI_volumes',large)
+        #self.images_files.sort(key=lambda f: int(re.sub('\D', '', f)))
         self.masks_files = self.get_files(self.path, self.mode, 'masks',large)
+        #self.masks_files.sort(key=lambda f: int(re.sub('\D', '', f)))
+
         self.transform = transform
         self.large = large
 
@@ -53,7 +57,9 @@ class BalancedPatchGenerator(Dataset):
         large_dataset = [os.path.join(os.path.join(os.path.join(path, type_files), mode), file) for file in
                     os.listdir(os.path.join(os.path.join(path, type_files), mode)) if file.split('.')[-1] == 'npy']
 
+
         small_dataset = [file for file in large_dataset if 'ge' not in file]
+
 
         if large:
             return large_dataset
@@ -90,6 +96,7 @@ class BalancedPatchGenerator(Dataset):
         #print(len(idxs_condition[2]))
         #print(tensor.shape)
         #print(len(tensor.shape))
+
         position = np.random.randint(len(idxs_condition[0]))
         suggested_initial_points = [idxs_condition[i][position] for i in range(len(tensor.shape))]
         for i in range(len(suggested_initial_points)):
@@ -128,22 +135,17 @@ class BalancedPatchGenerator(Dataset):
         image_path, mask_path = self.get_image_mask_path(patient_id)
 
 
-        # read arrays
-        # image_original = VtkReader(image_path)
-        # image_resized = resize_data(image_original,[360,360,60])
-        # mask_original = VtkReader(mask_path)
-        # mask_resized = resize_data(mask_original,[360,360,60])
-        #
-        #
-        # image = image_resized[110:250, 110:250,10:]
-        # mask = mask_resized[110:250, 110:250, 10:]
+        # Dataset_patients
+        # Values computed with the dataset_patients([119, 260], [148, 260], [13, 59])
+        image = np.load(image_path,allow_pickle=True)[110:265, 140:265,10:]
+        mask = np.load(mask_path,allow_pickle=True)[110:265, 140:265,10:]
 
-        #Values computed with the new dataset_patients([119, 260], [148, 260], [13, 59])
-        #image = image_resized[110:265, 140:265,10:]
-        #mask = mask_resized[110:265, 140:265, 10:]
 
-        image = np.load(image_path)[110:265, 140:265,10:]
-        mask = np.load(mask_path)[110:265, 140:265,10:]
+        #Challenge competition 18 Values overall masks: [119, 254] [119, 271] [3, 59]
+        #image = np.load(image_path,allow_pickle=True)[118:255, 118:272,2:]
+        #mask_original = np.load(mask_path,allow_pickle=True)[118:255, 118:272,2:]
+        #mask = np.where(mask_original == 255.0, 1, mask_original)
+
 
         #without re-size old dataset_patients
         #image = VtkReader(image_path)[103:223, 110:230, 10:59]
@@ -159,15 +161,18 @@ class BalancedPatchGenerator(Dataset):
             im_patch = image[idxs]
             mask_patch = mask[idxs]
         else:
+            #im_patch = resize_data(image,[265-110, 265-140,60-10])
+            #mask_patch = resize_data(mask,[265-110, 265-140,60-10])
             im_patch = image
             mask_patch = mask
-
         # in case of transform (just for the train mode)
         if self.transform is not None:
             if self.large:
-                im_patch = (1/468.0883)*(im_patch.astype(np.float32) - 158.37267)
+                pass
+                #im_patch = (1/468.0883)*(im_patch.astype(np.float32) - 158.37267)       # Large Dataset
+                #im_patch = (1 / 20.710878) * (im_patch.astype(np.float32) - 13.553477) # Challenge dataset
             else:
-                im_patch = (1 / 40.294086) * (im_patch.astype(np.float32) - 21.201036)
+                im_patch = (1 / 40.294086) * (im_patch.astype(np.float32) - 21.201036)  # Small dataset
 
 
         # expand dimensions
@@ -177,7 +182,6 @@ class BalancedPatchGenerator(Dataset):
         # tensor
         im_patch = torch.from_numpy(im_patch.astype(np.float32))
         mask_patch = torch.from_numpy(mask_patch.astype(np.float32))
-
 
         return im_patch, mask_patch
 

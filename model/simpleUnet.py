@@ -41,7 +41,7 @@ class UNet(nn.Module):
         self.dec2 = conv_stage(64, 16)
         self.dec1 = conv_stage(32, 16)
         self.conv_out = nn.Conv3d(16, out_channels=2, kernel_size=1)
-        self.final_activation = nn.Softmax(dim=1)
+        self.final_activation = nn.Sigmoid()
 
     def forward(self, x):
 
@@ -58,29 +58,24 @@ class UNet(nn.Module):
         dec2 = self.dec2(torch.cat((enc2, F.interpolate(dec3, enc2.size()[2:], mode='trilinear')), 1))
         dec1 = self.dec1(torch.cat((enc1, F.interpolate(dec2, enc1.size()[2:], mode='trilinear')), 1))
         out = self.conv_out(dec1)
-        #out = torch.sigmoid(out)
         out = self.final_activation(out)
         return out
 
 
+#
+# if __name__ == '__main__':
+#     import time
+#     import torch
+#     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#     net = UNet()
+#     print('Parameters:',sum(p.data.nelement() for p in net.parameters()))
+#     print(net)
+#     net.to(device)
+#     data = torch.Tensor(1, 1, 32, 32, 32)
+#     start_time = time.time()
+#
+#     out = net(data.to(device))
+#     print(out)
+#     print(out.shape)
+#     count = 0
 
-if __name__ == '__main__':
-    import time
-    import torch
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = UNet()
-    print('Parameters:',sum(p.data.nelement() for p in net.parameters()))
-    print(net)
-    net.to(device)
-    data = torch.Tensor(1, 1, 32, 32, 32)
-    start_time = time.time()
-
-    out = net(data.to(device))
-    print(out)
-    print(out.shape)
-    count = 0
-
-    # print(out)
-    # _, y_pred = out.max(dim=1)
-    # print(y_pred.shape)
-    # print("out size: {}".format(out.size()))
