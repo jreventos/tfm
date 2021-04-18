@@ -295,6 +295,8 @@ tifffile==2020.10.1
 toml @ file:///tmp/build/80754af9/toml_1592853716807/work
 toolz @ file:///tmp/build/80754af9/toolz_1601054250827/work
 torch==1.7.1
+torchsummary==1.5.1
+torchsummaryX==1.3.0
 torchvision==0.8.2
 tornado==6.0.4
 tqdm @ file:///tmp/build/80754af9/tqdm_1602185206534/work

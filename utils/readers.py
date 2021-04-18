@@ -7,43 +7,14 @@ from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
 
 
 
-
-def BinaryToAscii(PathBinary):
-    """
-     Conversion of a BINARY vtk format to an ASCII vtk format, it saves the Ascii file into the same path.
-
-    :param PathBinary: path of the files folders to convert
-    """
-
-    for id in os.listdir(PathBinary):
-        print(id)
-        for mask in os.listdir(os.path.join(PathBinary, id)):
-            if mask.endswith(".vtk"):
-                mask_path = os.path.join(os.path.join(PathBinary, id), mask)
-                print(mask_path)
-
-                # Read vtk BINARY mask file
-                reader = vtkStructuredPointsReader()
-                reader.SetFileName(mask_path)
-                reader.ReadAllVectorsOn()
-                reader.ReadAllScalarsOn()
-                reader.Update()
-
-                # Write vtk ASCII mask file
-                #train_path = "/Users/jreventos/Desktop/TFM/Data/Train/masks"
-
-                mask_path_ascii = os.path.join(os.path.join(PathBinary, id), 'ENDO_LA_ascii')
-                writer = vtkStructuredPointsWriter()
-                writer.SetFileName(mask_path_ascii)
-                writer.SetInputConnection(reader.GetOutputPort())
-                writer.Write()
-
 def VtkReader(VtkPath):
     """
     Vtk BINARY or ASCII file reader to a numpy array.
 
-    :param VtkPath: Vtk ascii file path
-    :return: numpy array
+    Input:
+        :VtkPath (string): Vtk ascii file path
+
+    Return: vtk file in numpy array format
     """
 
     reader = vtkStructuredPointsReader()
@@ -69,35 +40,14 @@ def VtkReader(VtkPath):
     return array_reshape
 
 
-
-
-# Read VTK FILES: (Another way to read VTK files)
-# import SimpleITK as sitk
-#
-# reader = sitk.ImageFileReader()
-# reader.SetImageIO("VTKImageIO")
-# #inputImageFileName = '/Users/jreventos/Desktop/TFM/Rtfm/patients_data2/MRI_volumes/train/MRI_2.vtk'
-# inputImageFileName = "/Users/jreventos/Desktop/TFM/tfm/patients_data2/masks/train/mask_2.vtk"
-# reader.SetFileName(inputImageFileName)
-# image = reader.Execute();
-# nda = sitk.GetArrayFromImage(image)
-# image_vtk = VtkReader(inputImageFileName)
-# nda  = nda.transpose(2,1,0)
-# print(nda.max())
-# print(image_vtk.max())
-#
-# import collections
-# print(collections.Counter(nda.flatten()))
-# print(collections.Counter(image_vtk.flatten()))
-
-
-
 def DicomReader(PathDicom):
     """
     Reads DICOM files and converts the images information into a numpy array
 
-    :param PathDicom: path of the DICOM images
-    :return: numpy array
+    Input:
+        : PathDicom (string): path of the DICOM images
+
+    Return: numpy array of the DICOM file
     """
 
     reader = vtk.vtkDICOMImageReader()
@@ -132,6 +82,13 @@ def DicomReader(PathDicom):
 
 
 def generate_vtk_from_numpy(ndarray,filename):
+    """
+    Write vtk files from numpy 3d volumes,
+
+    Input:
+       : ndarray
+       : filename (string)
+    """
     from tvtk.api import tvtk, write_data
 
     grid = tvtk.ImageData(spacing=(1.25, 1.25, 2.5), origin=(0, 0, 0),
@@ -144,47 +101,34 @@ def generate_vtk_from_numpy(ndarray,filename):
     write_data(grid, filename)
 
 
-def vtkImageToNumPy(image, pixelDims):
-    pointData = image.GetPointData()
-    arrayData = pointData.GetArray(0)
-    ArrayDicom = numpy_support.vtk_to_numpy(arrayData)
-    ArrayDicom = ArrayDicom.reshape(pixelDims, order='F')
 
-    return ArrayDicom
+def BinaryToAscii(PathBinary):
+    """
+     Conversion of a BINARY vtk format to an ASCII vtk format, it saves the Ascii file into the same path.
 
+    Input:
+        :PathBinary (string): path of the files folders to convert
+    """
 
+    for id in os.listdir(PathBinary):
+        print(id)
+        for mask in os.listdir(os.path.join(PathBinary, id)):
+            if mask.endswith(".vtk"):
+                mask_path = os.path.join(os.path.join(PathBinary, id), mask)
+                print(mask_path)
 
+                # Read vtk BINARY mask file
+                reader = vtkStructuredPointsReader()
+                reader.SetFileName(mask_path)
+                reader.ReadAllVectorsOn()
+                reader.ReadAllScalarsOn()
+                reader.Update()
 
-# # Read the source file.
-# reader = vtk.vtkStructuredPointsReader()
-# reader.SetFileName("C:/Users/Roger/Desktop/JANA/tfm/patients_data/MRI_volumes/test/MRI_1.vtk")
-# reader.Update()  # Needed because of GetScalarRange
-# output = reader.GetOutput()
-# output_port = reader.GetOutputPort()
-# scalar_range = output.GetScalarRange()
-# print(scalar_range)
-#
-# # Create the mapper that corresponds the objects of the vtk file
-# # into graphics elements
-# mapper = vtk.vtkDataSetMapper()
-# mapper.SetInputConnection(output_port)
-# mapper.SetScalarRange([0,255])
-#
-# # Create the Actor
-# actor = vtk.vtkActor()
-# actor.SetMapper(mapper)
-#
-# # Create the Renderer
-# renderer = vtk.vtkRenderer()
-# renderer.AddActor(actor)
-# renderer.SetBackground(1, 1, 1) # Set background to white
-#
-# # Create the RendererWindow
-# renderer_window = vtk.vtkRenderWindow()
-# renderer_window.AddRenderer(renderer)
-#
-# # Create the RendererWindowInteractor and display the vtk_file
-# interactor = vtk.vtkRenderWindowInteractor()
-# interactor.SetRenderWindow(renderer_window)
-# interactor.Initialize()
-# interactor.Start()
+                # Write vtk ASCII mask file
+                #train_path = "/Users/jreventos/Desktop/TFM/Data/Train/masks"
+
+                mask_path_ascii = os.path.join(os.path.join(PathBinary, id), 'ENDO_LA_ascii')
+                writer = vtkStructuredPointsWriter()
+                writer.SetFileName(mask_path_ascii)
+                writer.SetInputConnection(reader.GetOutputPort())
+                writer.Write()

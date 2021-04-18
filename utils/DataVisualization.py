@@ -7,9 +7,11 @@ def DisplaySlices(data, ColourMax):
         - Left Atria mask
         - MRI_volumes slices
 
+    Input:
     :param data: numpy array with the mask or MRI_volumes information
     :param ColourMax: data.max()
-    :return: opens a page with the slices displayed
+
+    Return: opens a page with the slices displayed
     """
     r = data.shape[0]
     c =data.shape[1]

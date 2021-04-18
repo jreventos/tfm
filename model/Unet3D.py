@@ -1,4 +1,4 @@
-from model.layers_factory import Encoder, Decoder
+from model.layers import Encoder, Decoder
 import torch
 from torch import nn as nn
 from torch.nn import functional as F

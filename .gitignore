@@ -1,7 +1,5 @@
-tfm/patients_data
-ai_postgraduate_project-master
-Books
-FIS-arritmies
-Papers
-/New Dataset/
-/patients_data2/
+/models_checkpoints_finals/
+/test_results/
+/datasets/ClinicLA_dataset/
+/datasets/LA_segmentation_competition/
+/mlruns/
