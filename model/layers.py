@@ -7,13 +7,14 @@ from torch.nn import functional as F
 
 def conv3d(in_channels, out_channels, kernel_size, bias, padding):
     """
-    Create convolution layer
-    :param in_channels:
-    :param out_channels:
-    :param kernel_size:
-    :param bias:
-    :param padding:
-    :return:
+    Create convolution layer.
+    Input:
+        :param in_channels (int): number of input channels
+        :param out_channels (int): number of output channels
+        :param kernel_size (int or tuple): size of the convolving kernel
+        :param bias (int)
+        :param padding: (int or tuple):  add zero-padding added to all three sides of the input
+        :return:
     """
     return nn.Conv3d(in_channels, out_channels, kernel_size, padding=padding, bias=bias)
 
@@ -21,18 +22,19 @@ def conv3d(in_channels, out_channels, kernel_size, bias, padding):
 def create_conv(in_channels, out_channels, kernel_size, order, num_groups, padding):
     """
      Create single convolution block with non-linearity and optional batchnorm/groupnorm.
-    :param in_channels (int): number of input channels
-    :param out_channels (int): number of output channels
-    :param kernel_size (int or tuple): size of the convolving kernel
-    :param order (string): order of the layers in the convolution block
-            'cr' -> conv + ReLU
-            'cl' -> conv + LeakyReLU
-            'gcr' -> groupnorm + conv + ReLU
-            'bcr' -> batchnorm + conv + ReLU
-    :param num_groups (int): number of groups for the GroupNorm
-    :param padding (int or tuple):  add zero-padding added to all three sides of the input
-
-    :return: list of tuple (name, module)
+     Input:
+        :param in_channels (int): number of input channels
+        :param out_channels (int): number of output channels
+        :param kernel_size (int or tuple): size of the convolving kernel
+        :param order (string): order of the layers in the convolution block
+                'cr' -> conv + ReLU
+                'cl' -> conv + LeakyReLU
+                'gcr' -> groupnorm + conv + ReLU
+                'bcr' -> batchnorm + conv + ReLU
+        :param num_groups (int): number of groups for the GroupNorm
+        :param padding (int or tuple):  add zero-padding added to all three sides of the input
+    Return:
+        :return: list of tuple (name, module)
     """
 
     assert 'c' in order, "Conv layer MUST be present"
@@ -89,6 +91,7 @@ class SingleConv(nn.Sequential):
     """
     Basic convolutional module consisting of a Conv3d, non-linearity and optional batchnorm/groupnorm.
 
+    Input:
         :param in_channels (int): number of input channels
         :param out_channels (int): number of output channels
         :param kernel_size (int or tuple): size of the convolving kernel
@@ -113,11 +116,8 @@ class DoubleConv(nn.Sequential):
     """
     Module of two consecutive convolution layers (e.g. BatchNorm3d+ReLU+Conv3d).
     We use (Conv3d+ReLU+GroupNorm3d) by default.
-    This can be changed however by providing the 'order' argument, e.g. in order
-    to change to Conv3d+BatchNorm3d+ELU use order='cbe'.
-    Use padded convolutions to make sure that the output (H_out, W_out) is the same
-    as (H_in, W_in), so that you don't have to crop in the decoder path.
 
+    Input:
         :param in_channels (int): number of input channels
         :param out_channels (int): number of output channels
         :param encoder (bool): if True we're in the encoder path, otherwise we're in the decoder
@@ -166,6 +166,7 @@ class Encoder(nn.Module):
     """
     Single ENCODER module consisting of the optional max/avg pooling layer.
 
+    Inputs:
         :param in_channels (int): number of input channels
         :param out_channels (int): number of output channels
         :param conv_kernel_size (int or tuple): size of the convolving kernel
@@ -210,7 +211,9 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     """
-    Single DECODER module with the upsampling layer (either learned ConvTranspose3d or nearest neighbor interpolation) followed by a basic module (DoubleConv).
+    Single DECODER module with the upsampling layer  followed by a basic module (DoubleConv).
+
+    Inputs:
 
         :param in_channels (int): number of input channels
         :param out_channels (int): number of output channels
@@ -259,10 +262,11 @@ class Decoder(nn.Module):
 
 class Upsampling(nn.Module):
     """
-    Upsamples a given multi-channel 3D data using interpolation
+    Upsamples a given multi-channel 3D data using interpolation.
 
-        :param mode (string): algorithm used for upsampling the options are the following...
-                    'nearest' | 'linear' | 'bilinear' | 'trilinear' | 'area'
+    Input:
+    :param mode (string): algorithm used for upsampling the options are the following...
+                'nearest' | 'linear' | 'bilinear' | 'trilinear' | 'area'
 
     """
 
