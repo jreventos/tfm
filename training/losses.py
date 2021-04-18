@@ -8,7 +8,7 @@ from scipy.ndimage import distance_transform_edt as eucl_distance
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-# Code inpired in: https://github.com/LIVIAETS/boundary-loss
+# Code inspired in: https://github.com/LIVIAETS/boundary-loss
 
 # Assert utils
 def uniq(a: Tensor) -> Set:
