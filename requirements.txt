@@ -48,7 +48,7 @@ colorama @ file:///tmp/build/80754af9/colorama_1603211150991/work
 colorlog==4.7.2
 Comet==3.1.0
 comtypes==1.1.7
-conda==4.9.2
+conda==4.10.1
 conda-build==3.20.5
 conda-package-handling @ file:///C:/ci/conda-package-handling_1603003327818/work
 conda-verify==3.4.2
@@ -175,7 +175,7 @@ openpyxl @ file:///tmp/build/80754af9/openpyxl_1598113097404/work
 opt-einsum==3.3.0
 optuna==2.4.0
 packaging==20.4
-pandas @ file:///C:/ci/pandas_1592833613419/work
+pandas @ file:///C:/ci/pandas_1602083338010/work
 pandocfilters @ file:///C:/ci/pandocfilters_1605102497129/work
 paramiko @ file:///tmp/build/80754af9/paramiko_1598886428689/work
 parso==0.7.0
@@ -190,7 +190,7 @@ pexpect==4.8.0
 pickleshare==0.7.5
 Pillow @ file:///C:/ci/pillow_1603823068645/work
 pkginfo==1.6.1
-plotly==4.14.1
+plotly @ file:///tmp/build/80754af9/plotly_1610565580232/work
 pluggy==0.13.1
 ply==3.11
 prettytable==0.7.2
