@@ -147,7 +147,6 @@ def train(data_loader_train, data_loader_val, model, criterion1,criterion2, alph
 
         # Train
         alpha = alphas[epoch]
-        print(alpha)
         loss_train, dice_train, hausdorff_train = train_epoch(data_loader_train, model, alpha, criterion1, criterion2, optimizer, mode_train=True)
 
         print(f'Training - Loss: {loss_train} - Dice: {dice_train} - Hausdorff: {hausdorff_train}')
