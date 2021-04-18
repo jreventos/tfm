@@ -27,10 +27,12 @@ Then the user should change the parser parameters within the "main.py" file. Dif
 must be changed for training or evaluating the model:
 
 ### Train 
-First, the "is_load" parameter should be set to False:
+First, the "is_load" parameter should be set to False and the path to the dataset directory should be written
+in the "path" parameter:
 
 ```bash
 parser.add_argument("--is_load", type=bool, default= False ,help="weights initialization")
+parser.add_argument("--path", type=str, default='datasets/ClinicLA_dataset',help="Path to the training and val data")
 ```
 Then, the user could change the model hyper-parameter, however, the actual confogiration 
 is set up with the best combination of parameters after fine-tuning. Finally, the user has
