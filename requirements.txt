@@ -146,7 +146,7 @@ mistune==0.8.4
 mkl-fft==1.2.0
 mkl-random==1.1.1
 mkl-service==2.3.0
-mlflow==1.13.1
+mlflow==1.23.1
 mock==4.0.2
 monai==0.4.0
 more-itertools @ file:///tmp/build/80754af9/more-itertools_1605111547926/work
