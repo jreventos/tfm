@@ -142,7 +142,7 @@ mayavi==4.7.2
 mccabe==0.6.1
 menuinst==1.4.16
 meshio==4.3.8
-mistune==0.8.4
+mistune==2.0.3
 mkl-fft==1.2.0
 mkl-random==1.1.1
 mkl-service==2.3.0
