@@ -197,7 +197,7 @@ prettytable==0.7.2
 prometheus-client==0.8.0
 prometheus-flask-exporter==0.18.1
 prompt-toolkit @ file:///tmp/build/80754af9/prompt-toolkit_1602688806899/work
-protobuf==3.14.0
+protobuf==3.18.3
 psutil @ file:///C:/ci/psutil_1598370330503/work
 py @ file:///tmp/build/80754af9/py_1593446248552/work
 pyasn1==0.4.8
