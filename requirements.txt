@@ -303,7 +303,7 @@ tqdm @ file:///tmp/build/80754af9/tqdm_1602185206534/work
 traitlets @ file:///tmp/build/80754af9/traitlets_1602787416690/work
 traits==6.2.0
 traitsui==7.1.1
-Twisted==21.2.0
+Twisted==22.10.0
 twisted-iocpsupport==1.0.1
 typing-extensions @ file:///tmp/build/80754af9/typing_extensions_1598376058250/work
 ujson @ file:///C:/ci/ujson_1602505266082/work
