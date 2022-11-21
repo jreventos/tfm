@@ -283,7 +283,7 @@ tblib @ file:///tmp/build/80754af9/tblib_1597928476713/work
 tensorboard==2.4.0
 tensorboard-plugin-wit==1.7.0
 tensorboardX==2.1
-tensorflow==2.4.0
+tensorflow==2.9.3
 tensorflow-estimator==2.4.0
 tensorflow-gpu==2.3.0
 tensorflow-gpu-estimator==2.3.0
